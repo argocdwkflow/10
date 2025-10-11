@@ -1,0 +1,62 @@
+Bonne question. Le plus simple est d’utiliser les variables YUM/DNF ($releasever, $basearch) et/ou plusieurs URLs dans baseurl. Ainsi, le même .repo marche pour RHEL 7 (valeur 7), pour RHEL 7 Server (valeur 7Server), et pour les autres versions.
+
+1) .repo “intelligent”
+
+[bp2itools]
+name=BP2I Tools ($releasever - $basearch)
+enabled=1
+gpgcheck=1
+gpgkey=http://repo.intra/keys/RPM-GPG-KEY-xxxx
+
+# YUM accepte une liste d’URLs : il essaie la 1re, puis la 2e, etc.
+baseurl=http://repo.intra/xxxx/rhel/$releasever/$basearch/ \
+        http://repo.intra/xxxx/rhel/${releasever}Server/$basearch/
+# (optionnel) choisir le comportement d’essai
+failovermethod=priority
+
+Sur RHEL 7 avec subscription-manager, $releasever vaut souvent 7Server.
+
+Sur CentOS/RHEL classique, $releasever peut valoir 7.
+
+Avec deux baseurl, YUM/DNF essaie d’abord le chemin …/7/…, puis …/7Server/… (ou l’inverse selon ton arborescence).
+
+
+> Astuce : tu peux aussi mettre les deux sur une seule ligne séparées par un espace.
+
+
+
+2) Forcer/adapter la valeur de $releasever si besoin
+
+Vérifier la valeur courante
+
+yum --releasever=/ test 2>/dev/null | grep -oE 'releasever=[^ ]+' || true
+
+RHEL avec subscription-manager :
+
+subscription-manager release --show         # afficher
+subscription-manager release --set=7Server  # forcer 7Server
+subscription-manager release --unset        # repasser en “dernier”
+
+Surcharge locale (toutes distros) : créer /etc/yum/vars/releasever avec 7 ou 7Server.
+
+echo 7Server | sudo tee /etc/yum/vars/releasever
+
+(YUM lira ce fichier et utilisera cette valeur pour $releasever.)
+
+
+3) Variables utiles
+
+$basearch → x86_64, aarch64, etc.
+
+Tu peux créer tes propres variables : mets une valeur dans /etc/yum/vars/ma_var et utilise $ma_var dans le .repo.
+
+
+4) Alternatives (si tu contrôles le dépôt interne)
+
+Symlink côté repo : faire pointer rhel/7 → rhel/7Server (ou inverse) supprime l’ambiguïté.
+
+mirrorlist/metalink internes : un endpoint HTTP renvoie l’URL correcte selon l’entête fournie par YUM (inclut releasever, arch).
+
+
+Si tu me donnes l’URL exacte de ton dépôt (structure des dossiers), je te fournis le .repo prêt à coller avec l’ordre d’URLs optimal.
+
