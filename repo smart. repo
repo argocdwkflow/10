@@ -2,8 +2,8 @@ Bonne question. Le plus simple est d’utiliser les variables YUM/DNF ($releasev
 
 1) .repo “intelligent”
 
-[bp2itools]
-name=BP2I Tools ($releasever - $basearch)
+[tools]
+name=Tools ($releasever - $basearch)
 enabled=1
 gpgcheck=1
 gpgkey=http://repo.intra/keys/RPM-GPG-KEY-xxxx
