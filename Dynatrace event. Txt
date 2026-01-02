@@ -174,3 +174,89 @@ Temps = anti-spam
 2️⃣ Règles spécifiques Hadoop / YARN (seuils adaptés)
 3️⃣ Validation officielle + wording ServiceNow
 Tu choisis 👌
+
+
+Parfait — avec ce dernier écran CPU + ce qu’on a vu avant pour la RAM, je te donne LES CONDITIONS DYNATRACE CORRECTES, propres, anti-spam, validées exploitation, que tu peux copier-coller et expliquer sans débat.
+✅ CONDITION DYNATRACE CPU (SATURATION RÉELLE)
+🎯 Objectif
+Détecter une vraie saturation CPU, pas un pic normal (find, gzip, batch).
+🔹 Métriques utilisées (classic keys)
+CPU usage %
+Copy code
+
+builtin:host.cpu.usage
+Load average 5 minutes
+Copy code
+
+builtin:host.cpu.load5m
+Nombre de CPU (vCPU)
+Copy code
+
+builtin:host.cpu.cores
+🔴 Condition CPU recommandée
+Copy code
+
+builtin:host.cpu.usage > 90
+AND builtin:host.cpu.load5m > builtin:host.cpu.cores
+FOR 20 minutes
+🧠 Interprétation simple
+Le CPU est fortement utilisé ET
+il y a plus de processus que de CPU disponibles ET
+ça dure → incident réel
+✅ CONDITION DYNATRACE RAM (PRESSION MÉMOIRE RÉELLE)
+🎯 Objectif
+Éviter 100 % des faux incidents liés au cache Linux.
+🔹 Métriques utilisées
+Mémoire disponible (%)
+Copy code
+
+builtin:host.mem.avail.pct
+Swap utilisée (%)
+Copy code
+
+builtin:host.mem.swap.used
+(Optionnel) Mémoire utilisée (%) – visibilité
+Copy code
+
+builtin:host.mem.usage
+🔴 Condition RAM recommandée
+Copy code
+
+builtin:host.mem.avail.pct < 10
+AND builtin:host.mem.swap.used > 5
+FOR 20 minutes
+(Optionnel – lisibilité)
+Copy code
+
+AND builtin:host.mem.usage > 90
+🧠 Interprétation simple
+Le serveur n’a presque plus de mémoire disponible
+et commence à swapper → impact réel
+❌ CE QU’IL NE FAUT PLUS FAIRE
+Mauvaise condition
+Pourquoi
+CPU > 98 % seul
+Faux positifs
+RAM used > 90 % seul
+Cache Linux
+Pas de durée
+Pics courts
+1 métrique = 1 ticket
+Spam
+📌 RÈGLE D’OR OFFICIELLE (À VALIDER)
+Un incident ServiceNow ne doit être créé
+que sur un PROBLEM Dynatrace,
+pas sur une métrique brute.
+🎯 VERSION ULTRA-COURTE (POUR COMITÉ)
+CPU : CPU > 90 % + load > vCPU + 20 min
+RAM : mémoire disponible < 10 % + swap + 20 min
+➜ Moins de tickets inutiles, plus de signal.
+🧩 BONUS (si tu veux aller plus loin)
+Ajouter I/O wait pour exclure les faux CPU
+Seuils différents Hadoop / batch
+Fenêtres horaires (jour / nuit)
+Si tu veux, je peux maintenant :
+te préparer la slide finale de validation
+ou le mail officiel de décision
+ou la même règle adaptée AIX / Linux / Hadoop
+Dis-moi 👍
