@@ -1,1 +1,176 @@
 
+
+Parfait 👍
+Je te propose la suite logique, clé en main, sans attendre :
+✅ A. RÈGLE DYNATRACE – RAM (anti-spam, production ready)
+🎯 Principe
+La RAM “haute” seule n’est pas un incident (cache Linux).
+On alerte seulement si pression mémoire réelle et durable.
+🔹 Condition recommandée (Host)
+Copy code
+
+Memory used (%) > 90
+AND Available memory (%) < 10
+AND Swap used (%) > 5
+FOR 20 minutes
+🔹 Pourquoi ces conditions
+Memory used % : visibilité
+Available memory % : vraie pression (exclut cache)
+Swap used % : preuve d’impact
+Durée : élimine pics courts
+➡️ Résultat : fini les incidents RAM à cause du cache.
+✅ B. CLIC-PAR-CLIC DANS DYNAtrace (CPU + RAM)
+1️⃣ Créer la règle CPU
+Settings → Anomaly detection → Metric events → Create metric event
+Metric : Host CPU usage
+Condition :
+CPU > 90 %
+AND Load (5 min) > vCPU
+Alert after : 20 minutes
+Entity : Host
+Severity : Resource
+Event title : Host CPU saturation (real)
+2️⃣ Créer la règle RAM
+Même écran → Create metric event
+Metrics :
+Memory used %
+Available memory %
+Swap used %
+Alert after : 20 minutes
+Event title : Host memory pressure (real)
+✅ C. ALERTING PROFILE (qui reçoit quoi)
+Settings → Alerting → Alerting profiles
+🔴 PROD-CRITICAL
+Inclure :
+CPU saturation (real)
+Memory pressure (real)
+Canaux :
+Pager (on-call)
+ServiceNow (OPEN / RESOLVED)
+🟡 PROD-WARNING (optionnel)
+CPU > 80 % (10–15 min)
+Teams uniquement
+❌ Pas de ticket
+✅ D. RÈGLE D’OR ServiceNow (anti-spam)
+1 Problem Dynatrace = 1 Incident ServiceNow
+❌ Pas de ticket sur alerte métrique simple
+✔️ Ticket créé uniquement à l’OPEN du Problem
+✔️ Fermeture auto au RESOLVED
+✅ E. MESSAGE FINAL À ENVOYER (validation officielle)
+Décision – Alertes CPU & RAM
+Nous passons d’alertes basées sur des seuils simples à une logique Dynatrace orientée Problem.
+CPU : CPU élevé ET load > vCPU ET durée ≥ 20 min.
+RAM : pression mémoire réelle (available faible + swap) ET durée ≥ 20 min.
+Objectif : réduire les incidents inutiles liés aux pics légitimes (find, gzip, batch, YARN) et se concentrer sur les vrais problèmes infra.
+📌 RÉCAP EXPRESS
+CPU seul ❌ → CPU + load + durée ✅
+RAM seule ❌ → pression mémoire réelle + durée ✅
+Metrics = symptôme | Events = explication
+1 Problem = 1 ticket
+👉 Prochaine étape (dis-moi “oui” à l’option) : 1️⃣ Je te fournis les noms exacts des métriques Dynatrace (copier-coller)
+2️⃣ Je prépare une slide unique “avant / après” pour comité
+3️⃣ On adapte spécifiquement Hadoop / YARN (seuils dédiés)
+Tu choisis 👌
+
+
+Parfait 👍
+Voici ce que tu peux utiliser directement dans Dynatrace, avec les noms EXACTS des métriques (copier-coller), + une explication simple à donner à l’équipe.
+✅ 1. MÉTRIQUES DYNATRACE – NOMS EXACTS
+🟠 CPU
+🔹 CPU usage (%)
+Metric key
+Copy code
+
+builtin:host.cpu.usage
+👉 Pourcentage d’utilisation CPU globale du host.
+🔹 Load average (5 minutes)
+Metric key
+Copy code
+
+builtin:host.load.5m
+👉 Nombre moyen de processus en attente / en cours sur 5 minutes.
+🔹 Nombre de vCPU
+Metric key
+Copy code
+
+builtin:host.cpu.cores
+👉 Capacité réelle du serveur (CPU logiques).
+🟢 MÉMOIRE (RAM)
+🔹 Mémoire utilisée (%)
+Copy code
+
+builtin:host.mem.usedPct
+⚠️ Inclut le cache Linux → ne jamais l’utiliser seule.
+🔹 Mémoire disponible (%)
+Copy code
+
+builtin:host.mem.availablePct
+👉 Indicateur clé de pression mémoire réelle.
+🔹 Swap utilisée (%)
+Copy code
+
+builtin:host.swap.usedPct
+👉 Si > 0 de façon persistante → impact réel.
+✅ 2. RÈGLES DYNATRACE EXACTES (PRODUCTION)
+🔴 CPU – Saturation réelle (RECOMMANDÉE)
+Metric event
+Copy code
+
+builtin:host.cpu.usage > 90
+AND builtin:host.load.5m > builtin:host.cpu.cores
+FOR 20 minutes
+Interprétation simple
+Le CPU est très utilisé et
+il y a plus de demandes que de CPU disponibles et
+la situation dure → incident réel
+🔴 RAM – Pression mémoire réelle
+Metric event
+Copy code
+
+builtin:host.mem.usedPct > 90
+AND builtin:host.mem.availablePct < 10
+AND builtin:host.swap.usedPct > 5
+FOR 20 minutes
+Interprétation simple
+La mémoire est pleine,
+il n’y a presque plus de mémoire disponible,
+et le système swap → impact réel
+✅ 3. CE QUE TU PEUX DIRE À L’ÉQUIPE (très important)
+Phrase courte (stand-up)
+« CPU ou RAM seuls ne suffisent pas.
+On alerte uniquement quand la demande dépasse la capacité,
+et que la situation dure. »
+Phrase claire (N2 / N3)
+« load > vCPU signifie que le serveur a plus de processus à exécuter que de CPU disponibles.
+C’est la vraie saturation, pas juste un pic. »
+✅ 4. POURQUOI ÇA RÈGLE LE PROBLÈME VU (find / gzip / YARN)
+Cas
+Ancienne règle
+Nouvelle règle
+find / gzip
+❌ Incident
+✅ Ignoré
+Batch court
+❌ Incident
+✅ Ignoré
+Jobs parallèles longs
+❌ Bruit
+✅ 1 vrai Problem
+Infra dégradée
+❌ Noyée
+✅ Visible
+✅ 5. RÈGLE D’OR À VALIDER OFFICIELLEMENT
+Un ticket ServiceNow ne doit être créé
+que sur un PROBLEM Dynatrace,
+pas sur une métrique brute.
+📌 RÉCAP ULTRA-COURT
+CPU → builtin:host.cpu.usage
+Load → builtin:host.load.5m
+vCPU → builtin:host.cpu.cores
+RAM → availablePct + swap
+Temps = anti-spam
+1 Problem = 1 action
+👉 Prochaine étape possible (dis “OK + numéro”) : 1️⃣ Slide unique “AVANT / APRÈS” pour comité
+2️⃣ Règles spécifiques Hadoop / YARN (seuils adaptés)
+3️⃣ Validation officielle + wording ServiceNow
+Tu choisis 👌
