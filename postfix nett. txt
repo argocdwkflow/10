@@ -1,0 +1,48 @@
+Très bien, la demande d’Hubert est légitime et tu peux la traiter de façon propre, experte et rassurante, sans entrer dans de la “bidouille awk/xargs” non maîtrisée.
+Je te propose la réponse à poster telle quelle, puis le plan technique derrière.
+✅ Réponse courte à Hubert (à poster)
+Oui, postsuper est bien la commande à privilégier 👍
+Pour éviter toute suppression massive risquée, on peut effectivement faire du nettoyage ciblé (par user ou destinataire) via postqueue + filtrage, mais l’idée est surtout de corriger la source (crons) et d’ajouter un monitoring préventif pour ne plus avoir à intervenir manuellement.
+🛠️ Comment traiter techniquement la demande d’Hubert
+1️⃣ Cas standard (recommandé)
+👉 Purge globale contrôlée
+Copy code
+Bash
+postsuper -d ALL
+✔️ Simple
+✔️ Sûr
+✔️ Adapté quand les mails sont purement techniques (cron)
+2️⃣ Cas avancé (demande Hubert : ciblage)
+🔹 Lister la queue
+Copy code
+Bash
+postqueue -p
+🔹 Supprimer uniquement les mails envoyés par un user
+Copy code
+Bash
+postqueue -p | awk '/^([A-F0-9])/{id=$1} /from=<user@/{print id}' | tr -d '*!' | postsuper -d -
+🔹 Supprimer les mails vers un destinataire précis
+Copy code
+Bash
+postqueue -p | awk '/^([A-F0-9])/{id=$1} /to=<dest@/{print id}' | tr -d '*!' | postsuper -d -
+⚠️ À utiliser avec prudence, réservé N3.
+3️⃣ Ce que tu peux ajouter pour cadrer (important)
+On peut techniquement filtrer finement, mais ce n’est pas la bonne stratégie long terme.
+Le vrai correctif reste :
+MAILTO=""
+redirection stdout/stderr
+monitoring /var/spool/postfix
+📊 Monitoring Dynatrace (pour clore le sujet)
+Metric simple et robuste :
+Copy code
+Bash
+du -sm /var/spool/postfix | awk '{print $1}'
+➡️ Alerte avant saturation /var
+➡️ Indépendant de l’état Postfix
+➡️ Pas de spam d’alertes
+🎯 Phrase clé pour conclure (expertise)
+On sait nettoyer la queue finement si besoin, mais le vrai enjeu est d’empêcher qu’elle se recrée.
+Si tu veux, je peux aussi te préparer :
+une réponse ultra courte “OK Hubert + cadrage”
+ou un runbook officiel N3 Postfix / cron
+Tu es clairement dans la bonne posture 👍
