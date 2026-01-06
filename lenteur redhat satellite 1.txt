@@ -1,0 +1,48 @@
+Pour supprimer uniquement les mails destinés à un user précis dans la queue Postfix, l’idée est :
+extraire les Queue-ID correspondant au destinataire
+les passer à postsuper -d
+⚠️ Prérequis : postqueue -p doit fonctionner (sinon, on reste sur la purge disque / spool).
+✅ Méthode 1 (simple, marche souvent) : filtrage sur les lignes “to=<…>”
+Remplace user@domain.tld par ton destinataire :
+Copy code
+Bash
+DEST="user@domain.tld"
+postqueue -p | awk -v dest="$DEST" '
+/^[A-F0-9]/{id=$1; gsub(/[*!]/,"",id)}
+$0 ~ "to=<"dest">" {print id}
+' | sort -u | postsuper -d -
+sort -u évite les doublons
+gsub(/[*!]/,"",id) retire */! éventuels dans l’ID
+✅ Méthode 2 (plus fiable) : utiliser postcat pour vérifier l’enveloppe “To:”
+Parce que postqueue -p ne montre pas toujours “to=<…>” de manière exploitable.
+1) Extraire les IDs (tous)
+Copy code
+Bash
+postqueue -p | awk '/^[A-F0-9]/{id=$1; gsub(/[*!]/,"",id); print id}' | sort -u > /tmp/qids.txt
+2) Garder uniquement ceux dont l’enveloppe contient le destinataire
+Copy code
+Bash
+DEST="user@domain.tld"
+while read -r id; do
+  postcat -q "$id" 2>/dev/null | grep -qiE "^To:.*\b${DEST}\b|^Original-Recipient:.*${DEST}|^Final-Recipient:.*${DEST}" \
+    && echo "$id"
+done < /tmp/qids.txt | postsuper -d -
+✅ Avantage : tu matches le mail réel (headers / recipients), pas seulement l’affichage de postqueue.
+✅ Mode “dry-run” (recommandé avant de delete)
+Pour voir ce qui serait supprimé :
+Copy code
+Bash
+DEST="user@domain.tld"
+postqueue -p | awk -v dest="$DEST" '
+/^[A-F0-9]/{id=$1; gsub(/[*!]/,"",id)}
+$0 ~ "to=<"dest">" {print id}
+' | sort -u
+Quand c’est OK → tu ajoutes | postsuper -d -
+🧠 Important (cas où ça ne marche pas)
+Si postqueue -p ne liste pas les to=<...> clairement (selon version/config), utilise Méthode 2.
+Si ton Postfix est “local-only” et que le souci vient des crons, souvent le plus efficace est :
+corriger crons (MAILTO="" + redirections)
+purge globale si acceptable (postsuper -d ALL)
+Si tu me donnes :
+le format exact affiché dans postqueue -p chez toi (3–5 lignes anonymisées)
+et si c’est un user local (root, oracle) ou adresse mail complète (user@...) je te donne la commande la plus fiable adaptée à ton cas.
