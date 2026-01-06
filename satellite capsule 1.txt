@@ -1,0 +1,316 @@
+Voici la procédure claire et correcte (niveau production / Satellite 6.17–6.18) pour mettre en place des certificats SSL/TLS sur Red Hat Satellite Web UI (HTTPS) et sur les Capsules, avec les bonnes pratiques Red Hat 🔐
+🎯 Objectif
+Accès HTTPS sécurisé au Satellite Web UI
+Communication SSL valide Satellite ⇄ Capsules ⇄ Clients
+Éviter les certificats auto-signés non reconnus
+Conformité sécurité (banque / prod / audit)
+🧱 Architecture SSL Red Hat Satellite (rappel)
+Satellite = CA interne (par défaut)
+Capsules = certificats signés par la CA Satellite
+Clients = certificats hôte + CA Satellite
+Web UI = certificat serveur HTTPS
+🟢 MÉTHODE RECOMMANDÉE (Red Hat Best Practice)
+👉 Garder la CA interne Satellite 👉 Remplacer UNIQUEMENT le certificat HTTPS du Web UI 👉 Capsules restent signées par Satellite (plus simple & supporté)
+1️⃣ Vérifier le FQDN du Satellite (CRITIQUE)
+Copy code
+Bash
+hostname -f
+Exemple attendu :
+Copy code
+
+satellite-prod.example.com
+⚠️ Le CN/SAN du certificat doit matcher exactement ce FQDN
+2️⃣ Générer une CSR (Certificate Signing Request)
+📁 Répertoire recommandé
+Copy code
+Bash
+mkdir -p /root/ssl
+cd /root/ssl
+✍️ Créer la CSR
+Copy code
+Bash
+openssl req -new -newkey rsa:4096 -nodes \
+-keyout satellite.key \
+-out satellite.csr
+Renseigner :
+Copy code
+
+Common Name (CN) = satellite-prod.example.com
+Organization = YourCompany
+Country = FR
+👉 Ajoutez SAN (OBLIGATOIRE avec navigateurs modernes) :
+Copy code
+Bash
+openssl req -new -newkey rsa:4096 -nodes \
+-keyout satellite.key \
+-out satellite.csr \
+-subj "/CN=satellite-prod.example.com" \
+-addext "subjectAltName=DNS:satellite-prod.example.com"
+3️⃣ Faire signer la CSR par une Autorité de Confiance
+Options valides :
+✅ PKI interne entreprise (recommandé)
+✅ DigiCert / GlobalSign / Sectigo
+⚠️ Let's Encrypt → OK seulement si Internet autorisé
+⚠️ Ne PAS utiliser auto-signé en prod
+Vous recevez :
+satellite.crt
+intermediate.crt
+rootCA.crt
+4️⃣ Installer le certificat HTTPS sur Satellite
+📁 Copier les fichiers
+Copy code
+Bash
+cp satellite.key /etc/pki/tls/private/
+cp satellite.crt /etc/pki/tls/certs/
+cp intermediate.crt /etc/pki/tls/certs/
+🔗 Créer la chaîne complète
+Copy code
+Bash
+cat satellite.crt intermediate.crt > /etc/pki/tls/certs/satellite-fullchain.crt
+5️⃣ Appliquer le certificat avec satellite-installer
+Copy code
+Bash
+satellite-installer \
+--foreman-server-ssl-cert /etc/pki/tls/certs/satellite-fullchain.crt \
+--foreman-server-ssl-key /etc/pki/tls/private/satellite.key \
+--foreman-server-ssl-ca /etc/pki/tls/certs/rootCA.crt
+⏱️ Durée : 5–10 minutes
+6️⃣ Vérification HTTPS Web UI
+Copy code
+Bash
+curl -vk https://satellite-prod.example.com
+Navigateur :
+🔒 cadenas vert
+Pas d’erreur CN/SAN
+🔵 CERTIFICATS SSL POUR LES CAPSULES
+👉 RÈGLE D’OR
+NE PAS utiliser une CA externe pour les Capsules
+➡️ Capsules doivent être signées par la CA Satellite
+7️⃣ Générer le certificat Capsule depuis Satellite
+Sur le Satellite :
+Copy code
+Bash
+capsule-certs-generate \
+--capsule-fqdn capsule-prod.example.com \
+--certs-tar /root/capsule-prod-certs.tar
+8️⃣ Installer les certificats sur la Capsule
+Copier l’archive :
+Copy code
+Bash
+scp /root/capsule-prod-certs.tar root@capsule-prod:/root/
+Sur la Capsule :
+Copy code
+Bash
+tar xvf capsule-prod-certs.tar
+Puis :
+Copy code
+Bash
+satellite-installer \
+--scenario capsule \
+--certs-tar-file capsule-prod-certs.tar \
+--foreman-proxy-register-in-foreman true \
+--foreman-proxy-foreman-base-url https://satellite-prod.example.com
+9️⃣ Vérifier la Capsule
+Copy code
+Bash
+hammer capsule list
+hammer capsule info --name capsule-prod.example.com
+Statut attendu :
+Copy code
+
+Status: OK
+Certificates: valid
+🔐 Ports HTTPS obligatoires (sécurité)
+Flux
+Port
+Satellite Web UI
+443
+Capsule ⇄ Satellite
+443
+Clients ⇄ Capsule
+443
+Pulp
+24816
+🟡 Erreurs fréquentes (à éviter)
+❌ Certificat sans SAN
+❌ CN ≠ hostname
+❌ Certificat Capsule signé par CA externe
+❌ Modification manuelle Apache sans satellite-installer
+❌ Firewall bloquant 443 inter-sites
+✅ Résumé Architecture SSL PRO
+Composant
+Certificat
+Satellite Web UI
+CA entreprise
+Capsules
+CA Satellite
+Clients RHEL
+CA Satellite
+Support Red Hat
+100% OK
+👉 Si tu veux
+Je peux te fournir :
+✔️ Checklist sécurité audit (banque / ISO / CIS)
+✔️ Script automatisé Ansible SSL Satellite + Capsules
+✔️ Procédure spéciale environnement DISCONNECTED
+✔️ Migration SSL sans downtime
+Dis-moi ton type d’environnement (Prod / Qualif / Disconnected / Internet) et je t’adapte la procédure 👌
+
+
+Voici la procédure claire et correcte (niveau production / Satellite 6.17–6.18) pour mettre en place des certificats SSL/TLS sur Red Hat Satellite Web UI (HTTPS) et sur les Capsules, avec les bonnes pratiques Red Hat 🔐
+🎯 Objectif
+Accès HTTPS sécurisé au Satellite Web UI
+Communication SSL valide Satellite ⇄ Capsules ⇄ Clients
+Éviter les certificats auto-signés non reconnus
+Conformité sécurité (banque / prod / audit)
+🧱 Architecture SSL Red Hat Satellite (rappel)
+Satellite = CA interne (par défaut)
+Capsules = certificats signés par la CA Satellite
+Clients = certificats hôte + CA Satellite
+Web UI = certificat serveur HTTPS
+🟢 MÉTHODE RECOMMANDÉE (Red Hat Best Practice)
+👉 Garder la CA interne Satellite 👉 Remplacer UNIQUEMENT le certificat HTTPS du Web UI 👉 Capsules restent signées par Satellite (plus simple & supporté)
+1️⃣ Vérifier le FQDN du Satellite (CRITIQUE)
+Copy code
+Bash
+hostname -f
+Exemple attendu :
+Copy code
+
+satellite-prod.example.com
+⚠️ Le CN/SAN du certificat doit matcher exactement ce FQDN
+2️⃣ Générer une CSR (Certificate Signing Request)
+📁 Répertoire recommandé
+Copy code
+Bash
+mkdir -p /root/ssl
+cd /root/ssl
+✍️ Créer la CSR
+Copy code
+Bash
+openssl req -new -newkey rsa:4096 -nodes \
+-keyout satellite.key \
+-out satellite.csr
+Renseigner :
+Copy code
+
+Common Name (CN) = satellite-prod.example.com
+Organization = YourCompany
+Country = FR
+👉 Ajoutez SAN (OBLIGATOIRE avec navigateurs modernes) :
+Copy code
+Bash
+openssl req -new -newkey rsa:4096 -nodes \
+-keyout satellite.key \
+-out satellite.csr \
+-subj "/CN=satellite-prod.example.com" \
+-addext "subjectAltName=DNS:satellite-prod.example.com"
+3️⃣ Faire signer la CSR par une Autorité de Confiance
+Options valides :
+✅ PKI interne entreprise (recommandé)
+✅ DigiCert / GlobalSign / Sectigo
+⚠️ Let's Encrypt → OK seulement si Internet autorisé
+⚠️ Ne PAS utiliser auto-signé en prod
+Vous recevez :
+satellite.crt
+intermediate.crt
+rootCA.crt
+4️⃣ Installer le certificat HTTPS sur Satellite
+📁 Copier les fichiers
+Copy code
+Bash
+cp satellite.key /etc/pki/tls/private/
+cp satellite.crt /etc/pki/tls/certs/
+cp intermediate.crt /etc/pki/tls/certs/
+🔗 Créer la chaîne complète
+Copy code
+Bash
+cat satellite.crt intermediate.crt > /etc/pki/tls/certs/satellite-fullchain.crt
+5️⃣ Appliquer le certificat avec satellite-installer
+Copy code
+Bash
+satellite-installer \
+--foreman-server-ssl-cert /etc/pki/tls/certs/satellite-fullchain.crt \
+--foreman-server-ssl-key /etc/pki/tls/private/satellite.key \
+--foreman-server-ssl-ca /etc/pki/tls/certs/rootCA.crt
+⏱️ Durée : 5–10 minutes
+6️⃣ Vérification HTTPS Web UI
+Copy code
+Bash
+curl -vk https://satellite-prod.example.com
+Navigateur :
+🔒 cadenas vert
+Pas d’erreur CN/SAN
+🔵 CERTIFICATS SSL POUR LES CAPSULES
+👉 RÈGLE D’OR
+NE PAS utiliser une CA externe pour les Capsules
+➡️ Capsules doivent être signées par la CA Satellite
+7️⃣ Générer le certificat Capsule depuis Satellite
+Sur le Satellite :
+Copy code
+Bash
+capsule-certs-generate \
+--capsule-fqdn capsule-prod.example.com \
+--certs-tar /root/capsule-prod-certs.tar
+8️⃣ Installer les certificats sur la Capsule
+Copier l’archive :
+Copy code
+Bash
+scp /root/capsule-prod-certs.tar root@capsule-prod:/root/
+Sur la Capsule :
+Copy code
+Bash
+tar xvf capsule-prod-certs.tar
+Puis :
+Copy code
+Bash
+satellite-installer \
+--scenario capsule \
+--certs-tar-file capsule-prod-certs.tar \
+--foreman-proxy-register-in-foreman true \
+--foreman-proxy-foreman-base-url https://satellite-prod.example.com
+9️⃣ Vérifier la Capsule
+Copy code
+Bash
+hammer capsule list
+hammer capsule info --name capsule-prod.example.com
+Statut attendu :
+Copy code
+
+Status: OK
+Certificates: valid
+🔐 Ports HTTPS obligatoires (sécurité)
+Flux
+Port
+Satellite Web UI
+443
+Capsule ⇄ Satellite
+443
+Clients ⇄ Capsule
+443
+Pulp
+24816
+🟡 Erreurs fréquentes (à éviter)
+❌ Certificat sans SAN
+❌ CN ≠ hostname
+❌ Certificat Capsule signé par CA externe
+❌ Modification manuelle Apache sans satellite-installer
+❌ Firewall bloquant 443 inter-sites
+✅ Résumé Architecture SSL PRO
+Composant
+Certificat
+Satellite Web UI
+CA entreprise
+Capsules
+CA Satellite
+Clients RHEL
+CA Satellite
+Support Red Hat
+100% OK
+👉 Si tu veux
+Je peux te fournir :
+✔️ Checklist sécurité audit (banque / ISO / CIS)
+✔️ Script automatisé Ansible SSL Satellite + Capsules
+✔️ Procédure spéciale environnement DISCONNECTED
+✔️ Migration SSL sans downtime
+Dis-moi ton type d’environnement (Prod / Qualif / Disconnected / Internet) et je t’adapte la procédure 👌
