@@ -1,0 +1,88 @@
+Parfait 👍
+Tu es sur RHEL 7 et tu as bien le kernel 3.10.0-1160.139.el7.x86_64 installé.
+Voici la procédure propre et sûre pour revenir sur ce kernel précis.
+🎯 Objectif
+👉 Démarrer le serveur avec kernel 3.10.0-1160.139.el7.x86_64
+👉 Sans supprimer les autres kernels
+👉 Compatible environnement cluster VCS
+⚠️ PRÉCAUTIONS AVANT REBOOT (CLUSTER VCS)
+Sur le nœud concerné (ex: solvl9930295) :
+Copy code
+Bash
+hagrp -offline ALL -sys solvl9930295
+Vérifie :
+Copy code
+Bash
+hastatus -sum
+👉 Le nœud doit être PASSIF / OFFLINE
+1️⃣ Vérifier les entrées GRUB (important)
+Copy code
+Bash
+grubby --info=ALL | egrep "index=|kernel="
+Tu verras quelque chose comme :
+Copy code
+
+index=0 kernel=/boot/vmlinuz-3.10.0-1160.142.1.el7.x86_64
+index=1 kernel=/boot/vmlinuz-3.10.0-1160.139.1.el7.x86_64
+index=2 kernel=/boot/vmlinuz-3.10.0-1160.133.1.el7.x86_64
+👉 Note l’index correspondant à 1160.139
+(souvent index=1, mais vérifie)
+2️⃣ Méthode RECOMMANDÉE — Reboot UNE FOIS sur le kernel 139
+👉 Temporaire (1 reboot seulement)
+Si le kernel 139 est index=1 :
+Copy code
+Bash
+grub2-reboot 1
+reboot
+✔ Très sûr
+✔ Aucun changement permanent
+3️⃣ Méthode PERMANENTE (si tu veux rester sur 139)
+Copy code
+Bash
+grubby --set-default /boot/vmlinuz-3.10.0-1160.139.1.el7.x86_64
+reboot
+4️⃣ Vérifier après reboot
+Copy code
+Bash
+uname -r
+Résultat attendu :
+Copy code
+
+3.10.0-1160.139.1.el7.x86_64
+5️⃣ Réactiver le cluster
+Copy code
+Bash
+hagrp -unfreeze ALL -sys svv
+Puis éventuellement :
+Copy code
+Bash
+hagrp -online ALL -sys xxx
+(selon ta procédure interne)
+❌ À NE PAS FAIRE
+❌ supprimer le kernel 142 avant validation
+❌ modifier /boot/grub2/grub.cfg à la main
+❌ reboot sans offline VCS
+🧠 Pourquoi c’est pertinent dans ton cas MQ/VCS
+Le kernel 1160.142 a introduit chez certains clients :
+changements IPC (shm / sem)
+timings différents
+impacts MQ + VxVM + VCS
+👉 Revenir en 1160.139 est une excellente mesure de stabilisation
+🧾 Résumé express
+Action
+Commande
+Voir kernels
+rpm -q kernel
+Voir index
+grubby --info=ALL
+Boot 1 fois
+grub2-reboot <index>
+Boot permanent
+grubby --set-default
+Vérifier
+uname -r
+Si tu veux, je peux aussi :
+te dire quel kernel supprimer ensuite
+t’aider à bloquer les futures mises à jour kernel
+faire un rollback propre sur les deux nœuds
+Dis-moi 👍
