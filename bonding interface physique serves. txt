@@ -1,0 +1,159 @@
+Parfait 👍
+Avec les deux configurations complètes des serveurs 30292 et 30295, on peut maintenant faire une analyse factuelle, expliquer pourquoi le comportement n’est pas robuste, et donner la correction exacte RHEL 7.
+Je vais être très précis.
+🔍 1️⃣ Analyse DES CONFIGURATIONS ACTUELLES
+🖥️ Serveur 30292
+🔹 ifcfg-bond0
+Copy code
+Ini
+DEVICE=bond0
+ONBOOT=yes
+BOOTPROTO=none
+IPADDR=10.xx.xx.33
+NETMASK=255.255.255.192
+GATEWAY=10.xx.xx.1
+BONDING_OPTS="mode=1 miimon=100 primary_reselect=0"
+NM_CONTROLLED=no
+🔹 Slaves
+Copy code
+Ini
+ifcfg-pXp2:
+  ONBOOT=no
+  BOOTPROTO=dhcp   ❌
+  MASTER=bond0
+  SLAVE=yes
+
+ifcfg-pYp1:
+  ONBOOT=no
+  BOOTPROTO=dhcp   ❌
+  MASTER=bond0
+  SLAVE=yes
+🖥️ Serveur 30295
+🔹 ifcfg-bond0
+Copy code
+Ini
+DEVICE=bond0
+ONBOOT=yes
+BOOTPROTO=none
+IPADDR=10.xx.xx.34
+NETMASK=255.255.255.192
+GATEWAY=10.xx.xx.1
+BONDING_OPTS="mode=1 miimon=100 primary_reselect=0"
+NM_CONTROLLED=no
+🔹 Slaves
+Copy code
+Ini
+ifcfg-pXp2:
+  ONBOOT=no
+  BOOTPROTO=none
+  MASTER=bond0
+  SLAVE=yes
+
+ifcfg-p5Yp1:
+  ONBOOT=no
+  BOOTPROTO=none
+  MASTER=bond0
+  SLAVE=yes
+🚨 2️⃣ PROBLÈMES CRITIQUES IDENTIFIÉS
+❌ 1. fail_over_mac ABSENT (LES 2 SERVEURS)
+👉 Root cause principal de la perte SSH après firmware
+Par défaut (RHEL 7) :
+la MAC du bond change lors du basculement
+le switch peut bloquer le trafic
+❌ 2. ONBOOT=no sur les slaves (LES 2 SERVEURS)
+👉 Mauvaise pratique dangereuse
+les slaves montent “par chance”
+après firmware → timing différent → esclaves non attachés
+bond UP mais trafic instable
+❌ 3. BOOTPROTO=dhcp sur les slaves (30292)
+👉 ERREUR GRAVE
+une carte slave ne doit JAMAIS avoir DHCP
+peut générer :
+requêtes DHCP parasites
+MAC/VLAN incohérents
+rejet switch
+❌ 4. primary_reselect=0 inutile ici
+aucun primary=
+option sans effet
+confusion inutile
+🧠 ROOT CAUSE (CLAIRE ET DÉFENDABLE)
+Les deux serveurs ont une configuration bonding fonctionnelle mais non déterministe.
+La mise à jour firmware a déclenché un basculement de l’interface active, provoquant un changement de MAC du bond.
+Le switch n’étant pas tolérant à ce changement, le trafic (SSH inclus) a été bloqué.
+3️⃣ CONFIGURATION CORRECTE (RHEL 7 – GOLDEN CONFIG)
+ A. Corriger ifcfg-bond0 (LES 2 SERVEURS)
+Copy code
+Ini
+DEVICE=bond0
+TYPE=Bond
+BONDING_MASTER=yes
+ONBOOT=yes
+BOOTPROTO=none
+IPADDR=10.14.xx.xx
+PREFIX=26
+GATEWAY=10.xx.xx.1
+NM_CONTROLLED=no
+
+BONDING_OPTS="mode=active-backup miimon=100 fail_over_mac=active"
+📌 fail_over_mac=active = OBLIGATOIRE
+🔧 B. Corriger les slaves (LES 2 SERVEURS)
+Exemple ifcfg-pxp2 et ifcfg-pyp1
+Copy code
+Ini
+DEVICE=pxp2
+TYPE=Ethernet
+ONBOOT=yes
+BOOTPROTO=none
+MASTER=bond0
+SLAVE=yes
+NM_CONTROLLED=no
+⚠️ Supprimer toute ligne DHCP / IPv6 / DEFROUTE
+🔁 4️⃣ Application SANS REBOOT
+Copy code
+Bash
+ifdown pxp2 pyp1 bond0
+ifup bond0
+Puis vérifier :
+Copy code
+Bash
+cat /proc/net/bonding/bond0
+ip link show bond0
+🧪 5️⃣ TEST OBLIGATOIRE (avant firmware)
+Copy code
+Bash
+ifdown pxp2
+ping -c 5 10.
+ifup pxp2
+✔ Ping continu
+✔ MAC bond inchangée
+✔ SSH stable
+🧾 6️⃣ COMPARAISON EXPRESS 30292 vs 30295
+Point
+30292
+30295
+DHCP sur slaves
+❌ OUI
+✔ NON
+ONBOOT slaves
+❌ NON
+❌ NON
+fail_over_mac
+❌
+❌
+Robustesse
+❌
+❌
+Risque post-firmware
+🔥 ÉLEVÉ
+🔥 ÉLEVÉ
+🎯 CONCLUSION FINALE
+✔ Le bonding fonctionne en apparence
+❌ La configuration n’est pas robuste
+❌ Le firmware a juste révélé le problème latent
+👉 Sans correction, l’incident se reproduira
+Si tu veux, je peux te fournir :
+📄 un diff exact prêt à appliquer
+🤖 un script bash de validation RHEL 7
+🧾 un rapport incident prêt pour CAB / manager
+🔄 un plan de standardisation pour tous les serveurs
+Dis-moi 👍
