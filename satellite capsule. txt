@@ -104,3 +104,208 @@ une version “pitch archi / sécu” (1 page)
 un schéma d’architecture Satellite CIS
 une checklist conformité sécu Satellite
 une version ultra-courte pour comité de validation
+
+OK — voici une réponse très détaillée, question par question, avec le niveau “archi + sécu + ops”.
+(Je reste aligné avec ton contexte : enregistrement Katello en PULL, patch light + patch kernel, cadence mensuelle, périmètre fourni par ProdSec.)
+1/ CIDT (Confidentialité / Intégrité / Disponibilité / Traçabilité)
+Objectif
+Qualifier le niveau de criticité des données et des services Satellite CIS (et Prod), pour cadrer :
+les exigences sécurité (chiffrement, contrôle d’accès, logs),
+la disponibilité attendue,
+l’auditabilité/traçabilité.
+Ce que traite Satellite CIS
+Satellite (CIS) manipule principalement :
+inventaire technique (hostname, IP, facts, OS, packages installés),
+données de patching (errata, historique d’application, statut),
+certificats (certs RHSM/Katello, certs inter-composants Satellite/Capsule),
+clés / tokens / credentials (API tokens, éventuellement comptes techniques),
+contenus logiciels (RPM/repodata – généralement non sensibles mais critiques en intégrité).
+Proposition de cadrage (logique)
+Confidentialité (C) : Internal
+Car l’inventaire + états patchs + noms serveurs peuvent être sensibles (cartographie SI).
+Intégrité (I) : Standard (voire Strong si exigence sécu élevée)
+L’intégrité est critique : si un repo/errata est altéré → risque supply-chain interne.
+Disponibilité (D) : dépend de l’exploitation
+Strong si Satellite est un composant indispensable au patching et au run (grandes vagues)
+Minimum/Standard si un arrêt est tolérable et qu’on peut décaler les runs
+Traçabilité (T) : Minimal à Standard selon audit
+Minimal si on garde logs d’accès + changements majeurs.
+Standard si audit imposé (qui a déclenché quoi, quand, sur quel scope, etc.).
+Ce que je mettrais dans la réponse
+PROD (AP84354) : C=Internal / I=Standard / D=Strong / T=Minimal à Standard
+Justif : disponibilité importante lors des fenêtres de patch, impact large si indispo.
+Satellite CIS (A101645) : C=Internal / I=Standard / D=Minimum à Standard / T=Minimal
+Justif : CIS sert à patcher un périmètre défini. L’indispo peut être compensée par décalage.
+Points à mentionner (très “sécu-friendly”)
+Chiffrement TLS partout (UI/API, Satellite↔Capsules, Clients↔Capsules/Satellite)
+RBAC strict + comptes nominatifs
+Journaux (Foreman, httpd, auditd, PostgreSQL si demandé)
+Hash/GPG des RPM (contenu signé Red Hat) et contrôle du chemin de confiance
+2/ “Pull only” vs “Push autorisé ?” (configuration bp2i)
+Définition claire
+PULL : le client vient chercher (check-in, métadonnées, RPM, errata)
+Ex : dnf update/yum update, timers systemd, cron, jobs d’outil interne.
+PUSH : le serveur central déclenche une action sur le client
+Ex : Remote Execution (SSH/Ansible), agent, ou orchestration active.
+Dans ton modèle (Katello PULL)
+Vous êtes dans un modèle PULL contrôlé, ce qui est très courant en environnements sécurisés :
+Les machines sont enregistrées (subscription-manager/Katello)
+Elles récupèrent les repos via Satellite/Capsule
+L’application des patchs est faite via vos jobs/automation (AAP / scripts / ordonnanceur)
+ProdSec fournit la liste des serveurs → vous ciblez des groupes (hostgroups, AK, collections, ou inventaires d’automatisation)
+Ce que Satellite apporte même en “PULL”
+Même si c’est du pull, Satellite apporte :
+gouvernance du contenu : CV/CCV, lifecycle environments, filtres errata
+cadrage du patch : “ce serveur voit tel set de repos”, “tel snapshot de contenu”
+visibilité : quels hôtes sont en retard, quels errata manquent, historique
+conformité : prouver ce qui a été proposé et ce qui a été appliqué
+“Push” : ce que ça voudrait dire concrètement (et pourquoi vous ne le faites pas)
+Remote Execution (SSH) ou Ansible via Satellite
+Cela impose :
+ouverture réseau SSH / gestion clés,
+gestion des credentials,
+risques d’exécution non désirée depuis un composant central.
+Dans un contexte CIS, on dit généralement : ✅ “Satellite = contenu + conformité”
+✅ “Orchestration patch = outillage interne (AAP/ordonnanceur)”
+❌ “Satellite ne pousse pas de patch directement”
+3/ Port 9090 – Foreman Smart Proxy + questions associées
+À quoi sert le Smart Proxy (Capsule)
+Le Smart Proxy (Capsule) est le composant “edge” qui :
+expose des services (contenu, facts, templates, etc. selon modules activés)
+relaye/assure des fonctions au plus près des clients
+permet la scalabilité (éviter que tout tape le Satellite central)
+Sur le port 9090
+9090/TCP est utilisé historiquement/typiquement pour les communications du Smart Proxy (selon versions/modules) en HTTPS.
+Selon la topologie, l’essentiel est : Satellite ↔ Capsule doit passer en TLS et être autorisé via firewall.
+👉 En pratique, la bonne réponse “archi” à écrire :
+“Les communications Satellite/Capsule et services Smart Proxy nécessitent l’ouverture des ports requis en TCP/HTTPS entre zones (Satellite Core, Capsules, systèmes gérés). Le port 9090 est utilisé pour Smart Proxy dans notre design.”
+Clé SSH pour foreman-proxy ?
+Non, le fonctionnement standard Smart Proxy ne nécessite pas SSH.
+Les échanges sont :
+certifiés (certificats générés/déployés lors de l’installation capsule)
+authentifiés via TLS mutualisé selon composants.
+Remote Execution possible ?
+Possible techniquement, mais hors périmètre chez vous.
+Remote Execution = déclencher du code sur les clients depuis Satellite (SSH ou Ansible).
+Vous avez précisé : patching mensuel via vos processus + Katello pull → donc pas de besoin d’ouvrir SSH et pas de besoin d’agent (Katello-agent déprécié).
+Est-ce utilisé pour gestion de configuration (scripts Ansible…) ?
+Dans votre modèle : non.
+Vous séparez :
+Gestion de contenu/errata (Satellite)
+Orchestration/apply (AAP / scripts / ordonnanceur interne)
+4/ Accès équipes Linux N3 + N2 (Roumanie) : authent locale ?
+Ce qu’on doit écrire (et ce que ça implique)
+Oui, accès possible via :
+comptes locaux (créés dans Satellite) ou intégration IAM/SSO (LDAP/OIDC) si prévu.
+Comme tu as mentionné “authentification locale (comptes locaux)” :
+Comptes nominatifs (pas de “shared admin”)
+Mot de passe conforme politique (complexité, rotation si demandée)
+RBAC strict (rôles par équipe)
+Journalisation des connexions et actions
+Bon argument sécu
+Local accounts = simple et autonome
+Mais en entreprise, on préfère souvent :
+SSO/LDAP/OIDC
+désactivation automatique quand un compte quitte l’entreprise Si vous restez en local : préciser le process d’onboarding/offboarding.
+5/ Rôles interface WEB : Admin / Viewer / Admin orga ?
+RBAC Satellite (principe)
+Satellite/Foreman gère des rôles composés de permissions.
+On peut :
+utiliser des rôles standards,
+ou créer un rôle “BP2I Viewer”, “BP2I Patch Operator”, etc.
+Proposition très claire (par profil)
+Satellite Admin (plateforme) :
+Gestion globale (Capsules, settings, sync, infra, users/roles, etc.)
+Org Admin (fonctionnel) :
+Gère l’organisation : AK, CV/CCV, lifecycle, hosts de l’orga
+Viewer (read-only) :
+Consultation inventaire, errata status, dashboards
+Bonus “patching” (souvent utile)
+Créer un rôle intermédiaire :
+Patch Operator :
+consulter conformité,
+déclencher publication/promotion si autorisé,
+sans toucher à l’infra, ni aux users.
+6/ Hammer CLI : même auth et mêmes rôles ?
+Réponse détaillée
+Oui :
+Hammer est un client CLI qui appelle l’API Satellite (Foreman/Katello).
+L’API applique les mêmes contrôles RBAC que l’UI web.
+Authentification possible via :
+login/password (compte local)
+ou tokens (plus propre pour automation)
+Toute action Hammer est auditée comme une action API (avec l’utilisateur associé).
+Conclusion à écrire :
+“Hammer utilise la même authentification/autorisation que l’interface Web. Les permissions RBAC s’appliquent identiquement.”
+7/ Compte admin local à l’installation : actif ? utilisable ?
+Réalité terrain
+À l’installation, on crée généralement un compte admin initial.
+Bonne posture sécu à décrire
+Le compte initial sert :
+à bootstrapper l’instance (config initiale)
+Ensuite :
+on utilise des comptes nominatifs
+on limite l’usage du compte initial (voire désactivation/rotation mot de passe)
+on stocke les secrets dans un coffre (si existant)
+Formulation “propre” :
+“Un compte admin initial existe pour l’initialisation. L’exploitation courante se fait via comptes nominatifs. Le compte initial est restreint et son usage contrôlé.”
+8/ Organisations Satellite : positionnement, combien d’orgas ?
+Rôle d’une organisation
+Une organisation sépare :
+contenu (produits/repos/CV/AK),
+hôtes,
+permissions et visibilité.
+Stratégie recommandée (et compatible avec ton contexte)
+Ne pas multiplier les organisations inutilement (complexité opérationnelle)
+Créer des orgs quand :
+séparation forte (prod vs cis), ou entité distincte
+contraintes de gouvernance différentes
+Réponse possible (sans inventer)
+“Satellite CIS comporte N organisations alignées avec la segmentation et la gouvernance (environnements/entités).”
+“On vise un nombre minimal d’orgas pour limiter la dette opérationnelle.”
+Si tu veux un exemple concret à donner :
+1 org “CIS”
+OU 1 org par grand domaine si réellement nécessaire (ex : CIS-Infra / CIS-App)
+9/ API REST Satellite : cas d’usage + authentification
+Cas d’usage typiques (dans votre modèle)
+Automatiser :
+création/gestion hostgroups
+rattachement AK
+consultation conformité errata
+génération rapports
+actions de publication/promotion (si autorisées)
+Intégrations internes :
+CMDB
+AAP / pipelines GitLab
+reporting sécurité (ProdSec)
+Authentification recommandée
+Comptes techniques dédiés
+API tokens (plutôt que mdp en clair)
+RBAC minimal (permissions strictement nécessaires)
+Rotation des tokens / stockage dans vault (si possible)
+Formulation :
+“L’API REST est utilisée pour automatisation et intégration. Authentification via comptes techniques et tokens, soumis aux mêmes contrôles RBAC que l’UI.”
+10/ Disponibilité : Capsules en HA, Satellite dépôt non-HA ?
+Clarifier “HA” selon composants
+Capsules : oui, on peut mettre plusieurs capsules derrière VIP / load balancer, ou par site, etc.
+Les clients consomment via capsule → résilience locale.
+Satellite central :
+Le “vrai HA” actif/actif est complexe (DB, pulp, etc.)
+En pratique on fait souvent :
+sauvegardes + DR
+restauration / bascule (cold/warm standby)
+réplication des données si architecture le permet
+Ce que tu peux répondre clairement
+“Les systèmes consomment via des capsules en HA.”
+“Le Satellite central n’est pas en HA active/active ; une stratégie de bascule/DR est définie.”
+Très important à ajouter (niveau archi)
+SPOF résiduel = base de données / stockage pulp / service central
+Mesures compensatoires :
+sauvegardes régulières testées
+runbook de restauration
+monitoring
+capacité à décaler les vagues de patch en cas d’incident
+Option : version “copier-coller mail”
+Si tu veux, je te fournis aussi la version mail complète (avec intro/conclusion + ton pro), en 1 seul bloc prêt à envoyer.
+Dis-moi juste : tu veux un ton très formel (comité archi) ou tech + direct (échange interne entre ops) ?
+
