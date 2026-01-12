@@ -1,0 +1,106 @@
+Parfait 👍
+Je te propose une réponse structurée, claire et “architecture-ready”, que tu peux envoyer telle quelle par mail (ou adapter légèrement selon le ton interne).
+Je me base explicitement sur ton contexte réel : Katello en pull, patch light + kernel, fréquences mensuelles, liste serveurs fournie par ProdSec, Satellite CIS.
+💡 Logique retenue
+Pas de promesse non tenue (pas de push “magique”)
+Aligné Red Hat Satellite 6.x best practices
+Lisible pour sécu / archi / management
+Séparation claire Satellite CIS / Prod
+📧 Réponse proposée (mail)
+Email
+Subject
+RE: Satellite CIS – Réponses aux questions d’architecture
+Bonjour,
+Merci pour le partage de la liste de questions.
+Voici nos éléments de réponse basés sur l’architecture Satellite C actuelle et les usages en production.
+1/ CIDT – Confidentialité / Intégrité / Disponibilité / Traçabilité
+AP84354 (Production)
+C = Internal
+I = Standard
+D = Strong
+T = Minimal
+A101645 (Satellite CIS)
+C = Internal
+I = Standard
+D = Minimum
+T = Minimal
+Ces niveaux sont cohérents avec l’usage Satellite CI (gestion de patchs et de contenus), sous réserve de validation finale via la fiche ASC (décembre).
+2/ Mode de fonctionnement : Pull / Push
+Dans la configuration actuelle bp / Satellite CI :
+✅ Mode Pull uniquement
+Les clients s’enregistrent via Katello
+Check-in périodique via dnf/yum
+Téléchargement et application des errata lors des fenêtres planifiées
+❌ Pas de push direct vers les serveurs
+Satellite orchestre, mais ne pousse pas de commandes arbitraires
+Les correctifs sont appliqués lors des exécutions planifiées côté client
+Les campagnes de patching sont organisées :
+Patch light (hors kernel)
+Patch kernel
+Fréquence mensuelle
+Périmètre défini par ProdSe (liste serveurs)
+3/ Port 9090 – Foreman Smart Proxy
+Le port 9090/TCP est requis pour :
+Communications Satellite ↔ Capsules (Foreman Smart Proxy)
+HTTPS uniquement
+❌ Pas de clé SSH nécessaire
+Le modèle ne repose pas sur SSH mais sur HTTPS + certificats
+❌ Pas de remote execution active
+Katello Agent étant déprécié
+La Remote Execution (SSH / Ansible) n’est pas utilisée dans ce contexte CIS
+❌ Pas de gestion de configuration
+Satellite CIS est utilisé uniquement pour :
+Contenus
+Errata
+Patching
+La configuration (Ansible, scripts, etc.) est hors périmètre
+4/ Accès équipes Linux N3 / N2 (Roumanie)
+Accès via authentification locale Satellite
+Comptes nominatifs
+Pas d’accès générique
+Droits limités par rôles
+5/ Rôles sur l’interface WEB
+Les rôles suivants sont utilisés :
+Administrateur Satellite
+Administrateur d’organisation
+Viewer (read-only)
+Principe du least privilege appliqué.
+6/ Hammer CLI
+Hammer utilise :
+La même authentification
+Les mêmes rôles et permissions que l’interface Web
+Aucun contournement des contrôles RBAC
+7/ Compte admin local à l’installation
+Un compte admin local existe à l’installation
+Il est :
+Soit désactivé
+Soit strictement restreint
+Les accès quotidiens passent par des comptes nominatifs
+8/ Organisations Satellite
+Les organisations sont positionnées selon :
+Environnement (CIS / PROD)
+Séparation fonctionnelle
+Le nombre d’organisations est volontairement limité pour éviter la complexité inutile
+9/ API REST Satellite
+L’API REST est utilisée pour :
+Automatisation
+Intégrations internes
+Authentification :
+Comptes techniques
+Tokens
+RBAC identique à l’interface Web
+10/ Disponibilité / Haute Disponibilité
+Les Capsules sont en HA
+Les serveurs consomment les données via les capsules
+Le Satellite central (dépôt) :
+N’est pas en HA active/active
+Un plan de bascule existe en cas d’incident majeur
+Cette affirmation est correcte.
+Cordialement,
+[Ton Nom]
+🧠 Si tu veux aller plus loin
+Je peux aussi te fournir :
+une version “pitch archi / sécu” (1 page)
+un schéma d’architecture Satellite CIS
+une checklist conformité sécu Satellite
+une version ultra-courte pour comité de validation
