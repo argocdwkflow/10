@@ -314,3 +314,68 @@ Je peux te fournir :
 ✔️ Procédure spéciale environnement DISCONNECTED
 ✔️ Migration SSL sans downtime
 Dis-moi ton type d’environnement (Prod / Qualif / Disconnected / Internet) et je t’adapte la procédure 👌
+
+
+Exactement ✅ — tu mets le doigt sur la condition CRITIQUE.
+Voici la formulation technique juste, + l’explication complète que tu peux dire à l’oral ou écrire dans le dossier d’architecture.
+⚠️ Condition indispensable : capsules en Download Immediate
+1️⃣ Pourquoi c’est une condition bloquante ?
+Quand le Satellite tombe :
+Les capsules deviennent autonomes
+MAIS uniquement si elles ont déjà localement :
+les métadonnées
+ET les RPM
+👉 Si les capsules sont en On Demand :
+le client demande un RPM
+la capsule tente de le récupérer depuis le Satellite
+❌ Satellite indisponible → ❌ échec du patch
+2️⃣ Les 3 modes de téléchargement (rappel clair)
+Impact en cas de panne Satellite
+Mode
+Comportement
+Immediate
+Tous les RPM sont téléchargés dès la synchro
+✅ Autonomie complète
+On Demand
+RPM téléchargés au 1er client
+❌ Dépend du Satellite
+Background
+Mix (lazy + préfetch)
+⚠️ Autonomie partielle
+📌 Conclusion claire
+👉 Immediate est le SEUL mode qui garantit la continuité du patching en cas d’incident majeur Satellite.
+3️⃣ Ce que tu dois écrire noir sur blanc (archi / sécu)
+La continuité de service en cas d’indisponibilité du Satellite central est assurée à condition que les capsules soient configurées en mode “Download Immediate” pour l’ensemble des Content Views publiées. Dans ce cas, les capsules disposent localement de l’intégralité des paquets et métadonnées nécessaires à l’application des patchs.
+4️⃣ Pourquoi “les deux capsules” est essentiel
+2 capsules = redondance
+Mais redondance ≠ résilience si :
+une seule capsule a le contenu
+ou si les deux sont en On Demand
+👉 Il faut :
+Capsule A : Immediate
+Capsule B : Immediate
+Synchronisation OK sur les deux
+Tests de consommation depuis les deux
+5️⃣ Ce qui doit être vérifié AVANT chaque vague de patch
+Checklist simple (mais très pro) :
+[ ] Content View publiée
+[ ] Promue vers l’environnement cible
+[ ] Synchronisation terminée sur toutes les capsules
+[ ] Mode capsule = Immediate
+[ ] Test dnf repolist + dnf install depuis un serveur pilote
+[ ] Monitoring espace disque capsule OK
+6️⃣ Point capacité (important à mentionner)
+Immediate = consommation disque élevée :
+OS + patchs cumulés
+Plusieurs versions de CV
+Kernel + debug + deps
+👉 À écrire :
+Le mode Immediate implique un dimensionnement disque adapté sur les capsules afin d’éviter toute saturation.
+7️⃣ Phrase “archi validable” (clé en comité)
+En cas d’incident majeur sur le Satellite, la continuité du patching est assurée uniquement si les capsules sont configurées en mode Download Immediate et disposent localement de l’ensemble des paquets nécessaires. Ce point est une condition structurante de l’architecture.
+8️⃣ Si tu veux, je peux aussi te donner
+🔹 une phrase courte pour mail de validation
+🔹 un schéma avec flux Satellite DOWN / Capsules UP
+🔹 une commande de contrôle exact côté Satellite/Capsule
+🔹 une reco de sizing disque capsules
+Dis-moi ce que tu veux livrer ensuite 💪
