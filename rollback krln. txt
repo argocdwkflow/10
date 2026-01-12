@@ -6,10 +6,10 @@ Voici la procédure propre et sûre pour revenir sur ce kernel précis.
 👉 Sans supprimer les autres kernels
 👉 Compatible environnement cluster VCS
 ⚠️ PRÉCAUTIONS AVANT REBOOT (CLUSTER VCS)
-Sur le nœud concerné (ex: solvl9930295) :
+Sur le nœud concerné (ex: xxxxx) :
 Copy code
 Bash
-hagrp -offline ALL -sys solvl9930295
+hagrp -offline ALL -sys xxxxxx
 Vérifie :
 Copy code
 Bash
