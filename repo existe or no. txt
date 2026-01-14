@@ -1,0 +1,191 @@
+Voici un projet complet “AAP-ready” (Git) avec tous les dossiers demandés : collections/ defaults/ handlers/ meta/ tasks/ templates/ et un rôle unique bp2itools_repo qui :
+récupère le FQDN
+si FQDN se termine par .cpe.intra ➜ dépose le repo CPE si absent/vide
+sinon ➜ dépose le repo standard si absent/vide
+lance un handler clean metadata uniquement si le fichier repo a changé
+1) Arborescence complète du projet
+Copy code
+
+aap-bp2itools-repo/
+  roles/
+    bp2itools_repo/
+      collections/
+        requirements.yml
+      defaults/
+        main.yml
+      handlers/
+        main.yml
+      meta/
+        main.yml
+      tasks/
+        main.yml
+      templates/
+        bp2itools.repo.j2
+  playbook.yml
+2) Contenu des fichiers
+roles/bp2itools_repo/collections/requirements.yml
+Optionnel (si tu n’utilises que ansible.builtin, mais tu voulais le dossier)
+Copy code
+Yaml
+---
+collections:
+  - name: ansible.builtin
+roles/bp2itools_repo/defaults/main.yml
+Copy code
+Yaml
+---
+bp2itools_repo_path: "/etc/yum.repos.d/bp2itools.repo"
+
+# Sélection via FQDN
+bp2itools_cpe_suffix: ".cpe.intra"
+
+# Paramètres communs repo
+bp2itools_repo_id: "bp2itools"
+bp2itools_repo_enabled: 1
+bp2itools_repo_gpgcheck: 0
+bp2itools_repo_gpgkey: ""
+bp2itools_repo_sslverify: true
+
+bp2itools_repo_owner: "root"
+bp2itools_repo_group: "root"
+bp2itools_repo_mode: "0644"
+
+# Profil STANDARD (non CPE)
+# ✅ Plusieurs URLs sur une seule ligne baseurl= (failover) via join(' ')
+bp2itools_standard:
+  name: "bp2i"
+  baseurls:
+    - "https://yum.standard.intra/bp2itools/EL$releasever/$basearch/"
+    # - "https://yum.standard2.intra/bp2itools/EL$releasever/$basearch/"
+
+# Profil CPE
+bp2itools_cpe:
+  name: "bp2i"
+  baseurls:
+    - "https://yum.cpe.intra/bp2itools/EL$releasever/$basearch/"
+
+# Optionnel : log debug
+bp2itools_debug: false
+roles/bp2itools_repo/templates/bp2itools.repo.j2
+Copy code
+Ini
+[{{ bp2itools_repo_id }}]
+name={{ bp2itools_repo_name }}
+baseurl={{ bp2itools_repo_baseurls | join(' ') }}
+enabled={{ bp2itools_repo_enabled }}
+gpgcheck={{ bp2itools_repo_gpgcheck }}
+
+{% if bp2itools_repo_gpgcheck | int == 1 and (bp2itools_repo_gpgkey | trim) != '' -%}
+gpgkey={{ bp2itools_repo_gpgkey }}
+{% endif -%}
+
+sslverify={{ 1 if (bp2itools_repo_sslverify | bool) else 0 }}
+roles/bp2itools_repo/handlers/main.yml
+Copy code
+Yaml
+---
+- name: Clean yum/dnf metadata
+  ansible.builtin.command: "{{ item }}"
+  changed_when: false
+  loop:
+    - "dnf -q clean metadata"
+    - "yum -q clean metadata"
+  failed_when: false
+roles/bp2itools_repo/meta/main.yml
+Copy code
+Yaml
+---
+galaxy_info:
+  role_name: bp2itools_repo
+  author: "bp2i"
+  description: "Deploy bp2itools yum repo depending on FQDN suffix (.cpe.intra) when repo file is missing or empty"
+  license: "proprietary"
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions: ["7", "8", "9"]
+dependencies: []
+roles/bp2itools_repo/tasks/main.yml
+Copy code
+Yaml
+---
+# 1) S'assurer qu'on a au moins le FQDN
+- name: Ensure minimal facts are available
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "min"
+  when: ansible_facts is not defined or ansible_facts.fqdn is not defined
+
+# 2) Déterminer si machine CPE
+- name: Compute FQDN and CPE flag
+  ansible.builtin.set_fact:
+    bp2i_fqdn: "{{ (ansible_facts.fqdn | default(inventory_hostname)) | lower }}"
+    bp2i_is_cpe: "{{ ((ansible_facts.fqdn | default(inventory_hostname)) | lower).endswith(bp2itools_cpe_suffix) }}"
+
+# 3) Choisir le profil repo (CPE vs standard)
+- name: Select repo profile (CPE vs standard)
+  ansible.builtin.set_fact:
+    bp2itools_repo_name: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.name, bp2itools_standard.name) }}"
+    bp2itools_repo_baseurls: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.baseurls, bp2itools_standard.baseurls) }}"
+
+- name: Debug selection
+  ansible.builtin.debug:
+    msg: "FQDN={{ bp2i_fqdn }} | is_cpe={{ bp2i_is_cpe }} | baseurls={{ bp2itools_repo_baseurls }}"
+  when: bp2itools_debug | bool
+
+# 4) Vérifier existence + contenu du fichier repo
+- name: Check if bp2itools repo file exists
+  ansible.builtin.stat:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_stat
+
+- name: Read repo file content (if exists)
+  ansible.builtin.slurp:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_slurp
+  when: bp2itools_repo_stat.stat.exists
+
+- name: Decide if we must deploy repo (missing or empty)
+  ansible.builtin.set_fact:
+    bp2itools_repo_need_deploy: >-
+      {{
+        (not bp2itools_repo_stat.stat.exists)
+        or
+        (
+          bp2itools_repo_stat.stat.exists
+          and
+          (
+            (bp2itools_repo_stat.stat.size | default(0) | int) == 0
+            or
+            ((bp2itools_repo_slurp.content | default('') | b64decode | trim) == '')
+          )
+        )
+      }}
+
+# 5) Déployer uniquement si absent/vide
+- name: Deploy bp2itools.repo when missing/empty (profile-based)
+  ansible.builtin.template:
+    src: "bp2itools.repo.j2"
+    dest: "{{ bp2itools_repo_path }}"
+    owner: "{{ bp2itools_repo_owner }}"
+    group: "{{ bp2itools_repo_group }}"
+    mode: "{{ bp2itools_repo_mode }}"
+  when: bp2itools_repo_need_deploy
+  notify: Clean yum/dnf metadata
+playbook.yml (à la racine du projet)
+Copy code
+Yaml
+---
+- name: Ensure bp2itools repo is present (CPE-aware)
+  hosts: all
+  become: true
+  roles:
+    - role: bp2itools_repo
+3) Utilisation dans AAP (rapide)
+Dans ton Project AAP : pointe sur le repo Git aap-bp2itools-repo
+Dans le Job Template :
+Playbook = playbook.yml
+Credentials = Machine + (optionnel) Vault
+Inventory = ton inventaire
+Si tu veux, je peux aussi te donner une variante “converge” (si le fichier existe mais contenu incorrect ➜ on remplace), ou une variante qui écrit 2 sections repos plutôt que 2 URLs sur une seule ligne.
