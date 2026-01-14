@@ -1,0 +1,153 @@
+Parfait — on va entrer dans le dur technique, étape par étape, sans bullshit, et uniquement pour le SEUL cas où c’est possible :
+⚠️ Cette procédure est VALIDE UNIQUEMENT si le serveur N’A PAS rebooté sur un kernel RHEL8.
+(uname -r doit encore montrer un kernel 3.10.x RHEL7)
+🟢 CONTEXTE TECHNIQUE DU ROLLBACK LEAPP (AVANT REBOOT)
+Ce que fait réellement leapp upgrade
+Leapp fonctionne en 3 phases :
+Analyse
+→ collecte des facts, inhibitors, rapports
+Préparation (transactions DNF)
+→ prépare un userspace RHEL8 isolé
+→ planifie une transaction RPM (mais ne l’applique pas au système courant)
+Pivot au reboot
+→ bascule vers initramfs RHEL8
+→ applique la transaction
+→ point de non-retour
+👉 Avant reboot : rien d’irréversible n’est appliqué au système RHEL7 actif.
+🔍 PRÉ-REQUIS OBLIGATOIRES
+Copy code
+Bash
+uname -r
+# Doit être 3.10.x
+
+cat /etc/redhat-release
+# Doit être RHEL 7
+Vérifier que leapp n’a PAS pivoté :
+Copy code
+Bash
+ls /boot | grep el8
+# OK s'il existe mais PAS utilisé
+
+grubby --default-kernel
+🔁 PROCÉDURE ROLLBACK TECHNIQUE DÉTAILLÉE
+1️⃣ Arrêter proprement le processus Leapp
+🔹 Vérifier état Leapp
+Copy code
+Bash
+leapp upgrade --resume
+👉 Permet de :
+reprendre un workflow bloqué
+nettoyer les locks
+garantir un état cohérent
+🔹 Stopper définitivement leapp
+Copy code
+Bash
+leapp upgrade --stop
+🧠 Ce que ça fait techniquement :
+annule le workflow actors
+supprime les états transitoires
+libère les verrous DNF
+2️⃣ Supprimer les paquets leapp (sans casser RHEL7)
+Copy code
+Bash
+dnf remove leapp leapp-repository leapp-upgrade-el7toel8 -y
+📌 Pourquoi pas dangereux :
+leapp n’est pas un composant OS
+aucun package critique RHEL7 n’en dépend
+suppression n’affecte pas glibc, systemd, kernel
+3️⃣ Nettoyage des métadonnées leapp
+Copy code
+Bash
+rm -rf /var/lib/leapp
+rm -rf /var/log/leapp
+rm -rf /etc/leapp
+📂 Contenu supprimé :
+états actors
+journaux
+cache de userspace EL8
+rapports JSON
+4️⃣ Rollback DNF (TRÈS IMPORTANT)
+🔍 Identifier la transaction leapp
+Copy code
+Bash
+dnf history
+Tu verras :
+Copy code
+
+ID | Command line
+42 | leapp upgrade
+🔁 Annuler la transaction
+Copy code
+Bash
+dnf history undo 42
+🧠 Ce que DNF fait réellement :
+annule les packages préparés
+restaure versions RHEL7
+nettoie les dépendances temporaires
+⚠️ Si la transaction n’a PAS été appliquée :
+la commande est safe
+aucun impact système
+5️⃣ Nettoyage complémentaire post-leapp
+Copy code
+Bash
+dnf clean all
+rm -rf /var/cache/dnf
+6️⃣ Vérifications post-rollback
+🔍 Vérifier OS
+Copy code
+Bash
+cat /etc/redhat-release
+uname -r
+🔍 Vérifier packages
+Copy code
+Bash
+rpm -qa | grep leapp
+# Doit être vide
+🔍 Vérifier GRUB
+Copy code
+Bash
+grubby --info=ALL | grep el8
+# OK si présent mais non utilisé
+7️⃣ Vérifier services critiques
+Copy code
+Bash
+systemctl status network
+systemctl status <db>
+systemctl status <app>
+❌ CE QUI NE DOIT PAS ÊTRE FAIT
+Action
+Pourquoi
+dnf downgrade *
+casse glibc
+rpm -Uvh --force
+corruption RPMDB
+Modifier /usr/lib64
+suicide OS
+Reboot après pivot
+point de non-retour
+🧠 LIMITES TECHNIQUES
+Élément
+Impact
+SELinux
+Aucun
+DB
+Aucun
+Données
+Aucune perte
+Kernel
+Inchangé
+Bootloader
+Inchangé
+📌 RÉSUMÉ ULTRA-CLAIR
+✅ Rollback possible UNIQUEMENT avant reboot
+✅ Aucun impact données
+❌ Impossible après boot kernel RHEL8
+🔥 Recommandation N3 / PROD
+👉 Si uname -r ≠ 3.10 → STOP rollback
+👉 Continuer RHEL8 ou réinstaller
+Si tu veux, je peux :
+Te donner un script rollback automatisé
+Analyser un leapp-report.txt
+Te fournir une checklist PRE-leapp PROD Satellite
+Dis-moi : 1️⃣ uname -r
+2️⃣ cat /etc/redhat-release
