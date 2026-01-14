@@ -1,0 +1,98 @@
+Parfait 👍
+Là on a le diagnostic complet :
+👉 RPMDB corrompue + clés GPG absentes / incohérentes
+👉 d’où rpmdbNextIterator ET échec de signature RPM
+Je vais te donner LA procédure N3 qui marche en prod, adaptée exactement à ce que tu montres à l’écran.
+🔍 Ce que montre ta capture (analyse)
+Dans /var/lib/rpm on voit :
+✔️ Packages, Basenames, Dirnames, etc. recréés
+✔️ plusieurs tentatives de rebuild
+❌ PAS de répertoire Pubkeys
+❌ donc aucune clé GPG importée
+❌ RPM ne peut plus valider les signatures
+❌ yum → rpmdbNextIterator / failed release provides
+👉 La base est partiellement reconstruite mais sans clés → inutilisable
+✅ SOLUTION COMPLÈTE (ordre strict)
+🟥 1️⃣ Arrêt + sauvegarde (dernière fois)
+Copy code
+Bash
+ps -ef | egrep 'yum|rpm' | grep -v grep
+cd /var/lib
+cp -a rpm rpm.SIGNATURE_FIX.$(date +%F_%H%M)
+🟥 2️⃣ Nettoyage propre de la base RPM (clé du succès)
+⚠️ On repart vraiment clean
+Copy code
+Bash
+cd /var/lib/rpm
+rm -f __db*
+rm -f Packages
+rm -f Name* Basenames* Dirnames* Require* Provide* Sigmd5* Trigger* Installtid*
+Puis :
+Copy code
+Bash
+rpm --initdb
+👉 À ce stade : rpmdb vide mais saine
+🟥 3️⃣ Recréer le répertoire Pubkeys (il manque chez toi)
+Copy code
+Bash
+mkdir -p /var/lib/rpm/pubkeys
+chmod 755 /var/lib/rpm/pubkeys
+⚠️ Sur RHEL 7, les clés sont dans la rpmdb, pas juste des fichiers
+🟥 4️⃣ Réimporter les clés GPG RHEL 7 (OBLIGATOIRE)
+Copy code
+Bash
+rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+Vérifie :
+Copy code
+Bash
+rpm -qa gpg-pubkey*
+👉 Si vide = problème d’OS (dis-le moi)
+🟥 5️⃣ Réinstaller redhat-release (CAUSE PRINCIPALE)
+Copy code
+Bash
+rpm -qa | grep redhat-release
+Si absent ou cassé :
+Copy code
+Bash
+yum reinstall redhat-release redhat-release-server -y
+Si yum ne passe pas encore 👉 ISO obligatoire :
+Copy code
+Bash
+mount /dev/cdrom /mnt
+rpm -Uvh --replacepkgs /mnt/Packages/redhat-release*.rpm
+🟥 6️⃣ Reconstruction finale RPMDB
+Copy code
+Bash
+rm -f /var/lib/rpm/__db*
+rpm --rebuilddb -vv
+⏳ Laisse finir (pas de Ctrl+C)
+🟥 7️⃣ Validation finale (doit passer)
+Copy code
+Bash
+rpm -qa | wc -l
+yum clean all
+yum repolist
+yum check
+✔️ Plus d’erreur rpmdbNextIterator
+✔️ Plus d’erreur de signature
+🚨 Si la signature échoue encore
+Contournement temporaire (urgence prod)
+Copy code
+Bash
+echo "gpgcheck=0" >> /etc/yum.conf
+⚠️ TEMPORAIRE UNIQUEMENT
+À enlever après réparation définitive.
+🧠 Pourquoi ton cas est spécial
+Snapshot / crash ancien (2022–2023 visible)
+Multiples rebuilds partiels
+rpmdb reconstruite sans les clés
+Yum dépend fortement de redhat-release provides
+✅ Conclusion N3 claire
+✔️ Le problème n’est plus le rebuild
+✔️ Le problème = clé GPG + redhat-release absents de la rpmdb
+✔️ La solution = reset propre + import clés + reinstall release
+Dis-moi maintenant :
+1️⃣ Serveur Satellite / Capsule / Standalone
+2️⃣ Accès ISO RHEL 7 oui/non
+3️⃣ Version exacte (7.6, 7.9…)
+Je t’adapte la commande finale exacte à ton environnement (prod-safe).
