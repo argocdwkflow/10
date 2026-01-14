@@ -1,1 +1,0 @@
-awk -F'-[0-9]' '{print $1}' packages_raw.txt | sort -u > packages_clean.txt
