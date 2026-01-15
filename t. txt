@@ -1,1 +1,209 @@
-klio
+
+
+Here is the clear, expert-level explanation in English, focused on how to resolve the issue without renaming /etc/ld.so.preload or the OneAgent library.
+How to Resolve the Issue Without Renaming /etc/ld.so.preload
+🎯 Constraint
+Do not rename /etc/ld.so.preload
+Do not rename liboneagentproc.so
+Keep Dynatrace OneAgent enabled
+Restore Podman / OCI runtime functionality on RHEL 8 CI agents
+✅ Recommended Solutions (Dynatrace Expert Actions)
+🥇 Solution 1 (Recommended)
+Exclude Podman and OCI Runtime Processes at Injection Level
+Principle
+Dynatrace allows process-level exclusions that prevent OneAgent from attaching to specific binaries before execution, even when ld.so.preload is present.
+Required Actions (Dynatrace Expert)
+Configure process exclusion rules for the following executables:
+podman
+conmon
+runc
+crun
+buildah
+This must be done in Dynatrace OneAgent process instrumentation configuration, not only in oneagent.conf.
+Result
+/etc/ld.so.preload remains unchanged
+Dynatrace stays active
+Podman no longer hangs
+Azure DevOps CI pipelines are restored
+➡️ This is the clean and enterprise-grade solution
+🥈 Solution 2
+Disable Deep Process Instrumentation on CI Agents
+Principle
+Keep Dynatrace host monitoring but disable low-level process injection on CI machines.
+Required Actions
+Mark CI agents as infrastructure-only monitoring
+Or apply a reduced OneAgent injection mode
+This prevents:
+glibc hooks
+pthread/futex interception
+➡️ Podman runtime no longer deadlocks.
+🥉 Solution 3
+Dedicated Dynatrace Policy for CI/CD Hosts
+Principle
+CI/CD hosts should not be fully instrumented at runtime level (Dynatrace best practice).
+Required Actions
+Create a dedicated Dynatrace host group for CI agents (RHEL 8)
+Disable process / container runtime instrumentation for that group
+➡️ No impact on production
+➡️ CI stability guaranteed
+⚠️ Why oneagent.conf Alone Is Not Sufficient
+oneagent.conf is applied after process startup
+/etc/ld.so.preload is evaluated before main()
+The deadlock occurs during runtime initialization, before OneAgent exclusions take effect
+➡️ As long as liboneagentproc.so is loaded by the dynamic loader, Podman can hang.
+❌ What Will NOT Fix the Issue
+❌ Editing only oneagent.conf
+❌ Using LD_PRELOAD= in the command
+❌ Restarting Podman
+❌ Artifactory / network changes
+❌ Storage or overlay tuning
+🧪 Validation After Fix (No Preload Change)
+Copy code
+Bash
+podman version
+podman pull <image-from-artifactory>
+✅ Commands return immediately
+✅ No hang
+✅ CI pipelines succeed
+🧾 Statement for Dynatrace / CAB
+The issue must be resolved without modifying /etc/ld.so.preload.
+Dynatrace OneAgent must exclude Podman and OCI runtime processes at the process-injection level on RHEL 8 CI agents.
+Configuration-only exclusions are insufficient because the deadlock occurs before OneAgent configuration is applied.
+🟢 Final Recommendation
+Short term: process-level exclusion in Dynatrace
+Mid term: dedicated CI/CD monitoring policy
+Long term: migrate CI agents to RHEL 9
+If you want, I can:
+Draft the exact message to Dynatrace support
+Prepare a change request
+Provide a verification checklist for the Dynatrace team
+Just tell me 👍
+
+Here are the two clear, validated methods to resolve the issue, written in professional English, suitable for an incident report, Dynatrace ticket, or change request.
+Method 1 – Dynatrace-Level Fix (Recommended, No System File Change)
+Description
+Configure Dynatrace OneAgent to exclude Podman and OCI runtime processes at injection level, while keeping OneAgent enabled on the host.
+Actions (Dynatrace Expert)
+Define process-level exclusion rules for the following binaries:
+podman
+conmon
+runc
+crun
+buildah
+Apply the configuration to RHEL 8 CI agents only
+Ensure the exclusion prevents LD_PRELOAD-based injection
+Result
+/etc/ld.so.preload remains unchanged
+Dynatrace monitoring remains active
+Podman no longer hangs during runtime initialization
+Azure DevOps CI pipelines can pull images from Artifactory successfully
+Validation
+Copy code
+Bash
+podman version
+podman pull <image-from-artifactory>
+Method 2 – OS-Level Fix (Local Mitigation on CI Agents)
+Description
+Disable Dynatrace preload injection only on CI agents by removing OneAgent from the global dynamic loader path.
+Actions
+Remove or disable /etc/ld.so.preload on CI agents
+Keep this change limited to non-production CI machines
+Result
+Podman and OCI runtime work normally on RHEL 8
+CI pipelines are fully restored
+Dynatrace deep process instrumentation is disabled on these hosts
+Validation
+Copy code
+Bash
+podman version
+podman pull <image-from-artifactory>
+Key Note
+Method 1 is the preferred and supported solution (no system-level changes).
+Method 2 is a workaround or emergency mitigation.
+Migration to RHEL 9 permanently eliminates the issue due to a newer, compatible runtime stack.
+One-Line Summary
+The issue can be resolved either by excluding Podman/OCI runtimes from Dynatrace injection at the monitoring level, or by disabling Dynatrace preload injection on CI agents.
+If you want, I can also prepare:
+A Dynatrace support ticket
+A CAB / change description
+A short executive summary
+Just tell me 👍
+
+Here is the clear, expert-level explanation in English, focused on how to resolve the issue without renaming /etc/ld.so.preload or the OneAgent library.
+How to Resolve the Issue Without Renaming /etc/ld.so.preload
+🎯 Constraint
+Do not rename /etc/ld.so.preload
+Do not rename liboneagentproc.so
+Keep Dynatrace OneAgent enabled
+Restore Podman / OCI runtime functionality on RHEL 8 CI agents
+✅ Recommended Solutions (Dynatrace Expert Actions)
+🥇 Solution 1 (Recommended)
+Exclude Podman and OCI Runtime Processes at Injection Level
+Principle
+Dynatrace allows process-level exclusions that prevent OneAgent from attaching to specific binaries before execution, even when ld.so.preload is present.
+Required Actions (Dynatrace Expert)
+Configure process exclusion rules for the following executables:
+podman
+conmon
+runc
+crun
+buildah
+This must be done in Dynatrace OneAgent process instrumentation configuration, not only in oneagent.conf.
+Result
+/etc/ld.so.preload remains unchanged
+Dynatrace stays active
+Podman no longer hangs
+Azure DevOps CI pipelines are restored
+➡️ This is the clean and enterprise-grade solution
+🥈 Solution 2
+Disable Deep Process Instrumentation on CI Agents
+Principle
+Keep Dynatrace host monitoring but disable low-level process injection on CI machines.
+Required Actions
+Mark CI agents as infrastructure-only monitoring
+Or apply a reduced OneAgent injection mode
+This prevents:
+glibc hooks
+pthread/futex interception
+➡️ Podman runtime no longer deadlocks.
+🥉 Solution 3
+Dedicated Dynatrace Policy for CI/CD Hosts
+Principle
+CI/CD hosts should not be fully instrumented at runtime level (Dynatrace best practice).
+Required Actions
+Create a dedicated Dynatrace host group for CI agents (RHEL 8)
+Disable process / container runtime instrumentation for that group
+➡️ No impact on production
+➡️ CI stability guaranteed
+⚠️ Why oneagent.conf Alone Is Not Sufficient
+oneagent.conf is applied after process startup
+/etc/ld.so.preload is evaluated before main()
+The deadlock occurs during runtime initialization, before OneAgent exclusions take effect
+➡️ As long as liboneagentproc.so is loaded by the dynamic loader, Podman can hang.
+❌ What Will NOT Fix the Issue
+❌ Editing only oneagent.conf
+❌ Using LD_PRELOAD= in the command
+❌ Restarting Podman
+❌ Artifactory / network changes
+❌ Storage or overlay tuning
+🧪 Validation After Fix (No Preload Change)
+Copy code
+Bash
+podman version
+podman pull <image-from-artifactory>
+✅ Commands return immediately
+✅ No hang
+✅ CI pipelines succeed
+🧾 Statement for Dynatrace / CAB
+The issue must be resolved without modifying /etc/ld.so.preload.
+Dynatrace OneAgent must exclude Podman and OCI runtime processes at the process-injection level on RHEL 8 CI agents.
+Configuration-only exclusions are insufficient because the deadlock occurs before OneAgent configuration is applied.
+🟢 Final Recommendation
+Short term: process-level exclusion in Dynatrace
+Mid term: dedicated CI/CD monitoring policy
+Long term: migrate CI agents to RHEL 9
+If you want, I can:
+Draft the exact message to Dynatrace support
+Prepare a change request
+Provide a verification checklist for the Dynatrace team
+Just tell me 👍
