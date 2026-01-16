@@ -1,0 +1,8 @@
+- name: Clean yum/dnf metadata and rebuild cache
+  ansible.builtin.command: "{{ ansible_pkg_mgr }} {{ item }}"
+  loop:
+    - clean metadata
+    - makecache
+  when: ansible_pkg_mgr is defined
+  changed_when: false
+  failed_when: false
