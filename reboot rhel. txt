@@ -1,0 +1,345 @@
+Voici une analyse complète et structurée des causes racines (Root Cause Analysis – RCA) d’un reboot d’un serveur Linux RHEL 7, comme on l’attend en environnement production / N3.
+🔎 Méthodologie RCA recommandée (RHEL 7)
+1️⃣ Identifier si le reboot est volontaire ou subi
+C’est l’étape la plus critique.
+Type
+Indication
+🔄 Reboot volontaire
+reboot, shutdown, patching
+⚠️ Crash OS
+kernel panic, OOM, soft lockup
+🔌 Reboot matériel
+power loss, iDRAC, watchdog
+🔐 Action sécurité
+hardening, agent EDR
+2️⃣ Sources de logs clés à analyser (dans l’ordre)
+🔹 Historique des reboots
+Copy code
+Bash
+last -x | head -20
+Résultats typiques :
+reboot system boot
+crash
+shutdown
+🔹 Logs système
+Copy code
+Bash
+grep -iE "reboot|panic|oom|watchdog|reset" /var/log/messages
+Copy code
+Bash
+journalctl --list-boots
+journalctl -b -1
+3️⃣ Causes racines les plus fréquentes sur RHEL 7
+🟥 A. Kernel Panic (cause critique)
+Symptômes :
+reboot brutal
+message kernel panic ou Oops
+Causes :
+bug kernel
+module tiers (Veritas, Oracle ASM, drivers SAN)
+corruption mémoire
+Vérification :
+Copy code
+Bash
+journalctl -k -b -1
+📌 RCA type :
+Kernel panic causé par le module vxfs après une opération I/O concurrente.
+🟥 B. OOM Killer (Out Of Memory)
+Symptômes :
+charge élevée
+base/app stoppée
+parfois reboot indirect
+Logs :
+Copy code
+Bash
+grep -i oom /var/log/messages
+Cause racine :
+RAM saturée
+swap insuffisant
+memory leak applicatif
+🟥 C. Watchdog matériel / logiciel
+Très fréquent sur serveurs Dell / HP / IBM.
+Logs :
+Copy code
+Bash
+grep -i watchdog /var/log/messages
+Causes :
+CPU soft lockup
+kernel bloqué > timeout watchdog
+📌 Exemple RCA :
+Reboot déclenché par watchdog suite à un soft lockup CPU causé par une contention I/O.
+🟥 D. Problème matériel / hyperviseur
+Indications :
+Aucun log OS avant reboot
+reboot “propre” mais inexpliqué
+Causes :
+panne alimentation
+crash hyperviseur (VMware / IBM Cloud)
+reset via iDRAC / IMM
+👉 À vérifier :
+logs hyperviseur
+logs iDRAC / iLO
+🟥 E. Action humaine / automatisation
+Très courant en environnement Satellite / Ansible.
+Indices :
+Copy code
+Bash
+last reboot
+ausearch -x reboot
+Causes possibles :
+patching automatique
+cron mal configuré
+job Ansible / Satellite
+🟥 F. Sécurité / agents
+Agents type :
+antivirus
+EDR
+monitoring avec injection kernel
+Symptôme :
+reboot post-update agent
+kernel tainted
+Copy code
+Bash
+dmesg | grep -i taint
+4️⃣ Cas spécifique RHEL 7 (à connaître)
+Élément
+Risque
+Kernel ancien
+bugs connus
+Modules tiers
+instabilité
+cgroups v1
+OOM plus brutal
+systemd ancien
+logs incomplets
+5️⃣ Modèle de Conclusion RCA professionnelle
+Root Cause : Reboot non planifié du serveur causé par un kernel panic déclenché par un module tiers Veritas lors d’une opération I/O intensive.
+Impact : Interruption applicative de 4 minutes.
+Corrective Action : Mise à jour du module, ajustement watchdog, upgrade kernel validé.
+Preventive Action : Monitoring kernel panic, validation modules tiers après patching.
+6️⃣ Si tu veux, je peux :
+✅ T’aider à analyser un extrait réel de /var/log/messages
+✅ Rédiger une RCA prête pour incident manager
+✅ Comparer RHEL7 vs RHEL8/9 sur les causes de reboot
+✅ Fournir un script d’audit reboot automatique
+Dis-moi 👍
+
+Voici une liste avancée de commandes de troubleshooting à lancer après un reboot RHEL 7, utilisées en diagnostic N3 / RCA production.
+Je les ai classées par objectif, avec interprétation attendue.
+🧠 1️⃣ Comprendre POURQUOI le kernel s’est arrêté
+🔹 Derniers messages kernel AVANT reboot
+Copy code
+Bash
+journalctl -k -b -1 --no-pager | tail -200
+➡️ Cherche :
+kernel panic
+BUG: soft lockup
+watchdog
+oom-killer
+🔹 Kernel buffer brut
+Copy code
+Bash
+dmesg -T | tail -200
+🔹 État kernel (tainted = module tiers)
+Copy code
+Bash
+cat /proc/sys/kernel/tainted
+0 → kernel sain
+>0 → module propriétaire / instabilité possible
+🧮 2️⃣ Mémoire / OOM / Pression RAM
+🔹 Historique OOM
+Copy code
+Bash
+grep -i "oom" /var/log/messages
+🔹 Dernier état mémoire
+Copy code
+Bash
+free -m
+vmstat 1 5
+🔹 Paramètres mémoire critiques
+Copy code
+Bash
+sysctl vm.overcommit_memory
+sysctl vm.swappiness
+📌 Indice RCA : OOM + swap faible → reboot indirect par watchdog ou crash applicatif critique.
+⚙️ 3️⃣ CPU / soft lockup / watchdog
+🔹 Soft lockup CPU
+Copy code
+Bash
+grep -i "soft lockup" /var/log/messages
+🔹 Watchdog
+Copy code
+Bash
+grep -i watchdog /var/log/messages
+🔹 Charge historique
+Copy code
+Bash
+uptime
+sar -q 1 5
+💾 4️⃣ Disques / I/O / Filesystems
+🔹 Erreurs filesystem
+Copy code
+Bash
+grep -iE "xfs|ext4|I/O error" /var/log/messages
+🔹 Latence disque
+Copy code
+Bash
+iostat -xz 1 5
+🔹 Filesystem en erreur (forçant reboot)
+Copy code
+Bash
+mount | grep ro
+🔌 5️⃣ Réseau / drivers / bonding
+🔹 Erreurs drivers
+Copy code
+Bash
+dmesg | grep -iE "eth|bond|net|link down"
+🔹 État bonding
+Copy code
+Bash
+cat /proc/net/bonding/bond0
+📌 Cas réel : driver NIC crash → kernel panic.
+🧩 6️⃣ Modules kernel tiers (TRÈS IMPORTANT)
+🔹 Modules chargés
+Copy code
+Bash
+lsmod | head -20
+🔹 Modules suspects
+Copy code
+Bash
+lsmod | egrep "vx|oracle|asm|kmod|falcon|edr"
+🔹 Version kernel
+Copy code
+Bash
+uname -a
+rpm -q kernel
+📌 RCA fréquent RHEL7 : kernel patché + module non compatible.
+🔐 7️⃣ Sécurité / actions humaines / automation
+🔹 Qui a rebooté ?
+Copy code
+Bash
+last reboot
+last shutdown
+🔹 Audit
+Copy code
+Bash
+ausearch -i -m system_boot,system_shutdown
+🔹 Cron / automatisation
+Copy code
+Bash
+crontab -l
+ls /etc/cron.*
+🖥️ 8️⃣ Matériel / hyperviseur (si VM)
+🔹 Indice power loss
+Copy code
+Bash
+journalctl -b -1 | grep -i power
+➡️ Si aucun log OS avant reboot →
+👉 cause externe (VMware, IBM Cloud, iDRAC)
+📦 9️⃣ Services critiques avant reboot
+Copy code
+Bash
+systemctl --failed
+systemctl list-units --state=failed
+📊 10️⃣ Diagnostic post-mortem rapide (script N3)
+Copy code
+Bash
+echo "=== LAST BOOTS ==="; last -x | head
+echo "=== KERNEL ERRORS ==="; journalctl -k -b -1 | tail -50
+echo "=== OOM ==="; grep -i oom /var/log/messages
+echo "=== WATCHDOG ==="; grep -i watchdog /var/log/messages
+echo "=== TAINT ==="; cat /proc/sys/kernel/tainted
+🧾 Conclusion N3 (exemple)
+Root Cause : Reboot non planifié causé par un soft lockup CPU détecté par le watchdog matériel, déclenché par une saturation I/O disque combinée à un module tiers non certifié sur kernel RHEL 7.
+Corrective Action : Upgrade kernel + module, ajustement watchdog.
+Preventive : Monitoring I/O + validation modules après patch.
+👉 Si tu veux, envoie-moi :
+un /var/log/messages
+un journalctl -b -1
+ou dis-moi VM ou physique
+Je te ferai la RCA finale prête incident manager / client ✅
+
+OK — avec uniquement la date/heure 06 janvier 2026 à 09:37 je ne peux pas “deviner” la root cause (il faut une preuve dans les logs). Par contre je peux te donner la procédure exacte pour l’identifier à 100% et sortir une RCA propre.
+Hypothèse : serveur en Europe/Paris (CET). Si l’horodatage est en UTC sur certains logs, on le verra.
+1) Confirmer l’événement reboot autour de 09:37
+Copy code
+Bash
+last -x | egrep -i "reboot|shutdown" | head -30
+who -b
+uptime
+Ce que tu cherques :
+une ligne reboot   system boot  ... proche de Tue Jan  6 09:37
+ou shutdown juste avant.
+2) Extraire les logs exactement autour de 09:37 (fenêtre 10 min)
+Si systemd/journald dispo (RHEL7 oui)
+Copy code
+Bash
+journalctl --since "2026-01-06 09:25:00" --until "2026-01-06 09:50:00" --no-pager
+Kernel uniquement (souvent la root cause est là)
+Copy code
+Bash
+journalctl -k --since "2026-01-06 09:25:00" --until "2026-01-06 09:50:00" --no-pager
+Logs classiques RHEL7
+Copy code
+Bash
+sed -n '/Jan  6 09:2[5-9]/,/Jan  6 09:5[0-9]/p' /var/log/messages
+3) Chercher les “signatures” root cause (patterns)
+Lance ces commandes sur la même fenêtre horaire :
+A) Kernel panic / oops / lockup
+Copy code
+Bash
+egrep -i "panic|Oops|BUG:|soft lockup|hard lockup|NMI|Call Trace" /var/log/messages
+B) OOM killer (mémoire)
+Copy code
+Bash
+egrep -i "Out of memory|oom-killer|Killed process" /var/log/messages
+C) Watchdog (matériel / softdog)
+Copy code
+Bash
+egrep -i "watchdog|softdog|hardlockup" /var/log/messages
+D) Storage / filesystem (I/O error => panic parfois)
+Copy code
+Bash
+egrep -i "I/O error|blk_update_request|Buffer I/O|xfs|ext4|reset|nvme|sd .* error" /var/log/messages
+E) Power / ACPI / reset externe (souvent “aucun log” avant reboot)
+Copy code
+Bash
+egrep -i "Power|ACPI|reset|Machine check|mce|thermal" /var/log/messages
+F) Reboot demandé par quelqu’un / automation
+Copy code
+Bash
+egrep -i "shutdown|reboot|systemd-logind|Runlevel|init 6" /var/log/messages
+4) Vérifier si c’est un CRASH kernel (kdump)
+Si kdump est actif, tu peux avoir la preuve définitive :
+Copy code
+Bash
+systemctl status kdump
+ls -ltr /var/crash/
+S’il existe un répertoire daté du 2026-01-06, c’est très probablement kernel panic / crash.
+5) Indices perf juste avant 09:37 (si sysstat installé)
+Copy code
+Bash
+sar -q -f /var/log/sa/sa06 | sed -n '1,200p'
+sar -u -f /var/log/sa/sa06 | sed -n '1,200p'
+sar -r -f /var/log/sa/sa06 | sed -n '1,200p'
+sar -d -f /var/log/sa/sa06 | sed -n '1,200p'
+👉 Cherche un pic à 09:30–09:37 :
+load énorme (CPU lockup)
+mémoire qui tombe à 0 (OOM)
+iowait très haut (storage freeze → watchdog)
+6) Comment conclure la root cause (règle simple)
+Tu as un “panic/oops/call trace” → root cause = kernel crash (souvent module/driver).
+Tu as “Out of memory / Killed process” → root cause = OOM / fuite mémoire / sizing.
+Tu as “watchdog: hard/soft lockup” → root cause = CPU hang (souvent I/O ou bug kernel).
+Tu n’as rien dans les logs OS juste avant → root cause = externe (hyperviseur, iDRAC, perte d’alim).
+Ce dont j’ai besoin pour te donner la root cause exacte
+Colle ici (même tronqué) :
+sortie de :
+Copy code
+Bash
+journalctl -k --since "2026-01-06 09:25" --until "2026-01-06 09:50" --no-pager | tail -200
+et :
+Copy code
+Bash
+sed -n '/Jan  6 09:3[0-9]/,/Jan  6 09:4[0-9]/p' /var/log/messages
+Avec ça, je te rédige la RCA finale (Root Cause + Evidence + Corrective/Preventive actions) sur l’incident de 06/01/2026 09:37.
