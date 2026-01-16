@@ -1,0 +1,54 @@
+Voici un ticket ServiceNow en anglais, prêt à être créé, avec un niveau N3/N4, orienté audit SAN / multipathing / routing, sans accusation directe.
+Je te donne une version professionnelle standard, utilisable telle quelle.
+Email
+Subject
+Request for SAN / Multipathing Audit – Server Unresponsiveness on Jan 6th, 2026
+Short description
+Request for SAN / Multipathing / Storage Path audit following server unresponsiveness on January 6th, 2026 at 04:10.
+Description
+Dear Team,
+We are requesting a storage/SAN/multipathing audit following an incident observed on a physical Dell server running RHEL 7, which became unresponsive on January 6th, 2026 at approximately 04:10.
+Between 04:10 and 09:37, the server remained powered on but unresponsive, producing no operating system logs or monitoring metrics. Normal activity resumed only after a hardware-level reset, at which point the system rebooted successfully.
+Observed behavior
+No OS logs (rsyslog, journald, kernel) generated between 04:15 and 09:37
+Monitoring data (CPU, memory, disk, network) stopped abruptly at ~04:10
+Disk I/O and IOPS dropped to near zero during the incident window
+No kernel panic, OOM, or application-level errors detected
+After recovery, kernel logs report multiple
+“Power-on or device reset occurred” events on storage devices
+All filesystems (XFS) mounted normally after reboot
+This behavior is consistent with a storage or I/O path freeze, where the operating system is unable to complete or log I/O operations.
+Suspected scope (to be confirmed)
+We suspect a potential issue involving one or more of the following components:
+SAN backend or storage array
+Fibre Channel / iSCSI fabric
+Zoning or routing between the storage array and the server
+HBA adapters or firmware
+Multipathing (path loss, path freeze, or queueing)
+No conclusive evidence points to an OS, kernel, or application failure.
+Request
+We kindly request your team to:
+Perform a detailed audit of the SAN, storage paths, and fabric
+Review storage array logs, fabric logs, and HBA-related events
+Check for any maintenance, failover, firmware events, or path disruptions
+Confirm whether any anomaly occurred around January 6th, 2026 between 04:00 and 09:30
+Provide the root cause analysis and any corrective / preventive recommendations
+Impact
+Server unavailable/unresponsive for several hours
+Manual hardware reset required to restore service
+No data corruption observed post-recovery
+Attachments / Evidence available
+OS logs before and after the incident
+Monitoring graphs (CPU, memory, disk, I/O)
+Kernel messages after reboot
+Timeline reconstruction
+Please let us know if additional data is required from the OS side.
+Thank you for your support.
+Kind regards,
+Linux Production Team (N3)
+👉 Si tu veux, je peux aussi :
+Adapter le ticket pour un Storage Vendor (Dell / EMC / NetApp / IBM / HPE)
+Le raccourcir pour un incident P2/P3
+Ajouter une timeline ITIL ou un business impact section
+Reformuler pour éviter toute sensibilité politique entre équipes
+Dis-moi 👍
