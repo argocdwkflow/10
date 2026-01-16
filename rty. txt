@@ -1,0 +1,51 @@
+Parfait 👍 tu as raison et c’est une correction N3 très importante.
+On ne doit PAS vérifier /var mais le filesystem qui porte le cache réel :
+RHEL 7 → /var/cache/yum
+RHEL 8+ → /var/cache/dnf
+Je te donne UNIQUEMENT les actions à modifier / ajouter, propres et robustes.
+✅ 1️⃣ Définir le bon chemin de cache selon l’OS
+Copy code
+Yaml
+- name: Set package manager cache path
+  ansible.builtin.set_fact:
+    pkg_cache_path: >-
+      {{ '/var/cache/yum' if ansible_distribution_major_version | int == 7
+         else '/var/cache/dnf' }}
+✅ 2️⃣ Vérifier l’espace disque SUR LE BON PATH
+Copy code
+Yaml
+- name: Check free space on package cache filesystem (KB)
+  ansible.builtin.command: df -Pk {{ pkg_cache_path }}
+  register: cache_df
+  changed_when: false
+✅ 3️⃣ Extraire l’espace libre (int sûr)
+Copy code
+Yaml
+- name: Set free cache space fact
+  ansible.builtin.set_fact:
+    pkg_cache_free_kb: "{{ (cache_df.stdout_lines[-1].split()[3]) | int }}"
+✅ 4️⃣ Bloquer proprement si < 500 MB
+Copy code
+Yaml
+- name: Fail if package cache filesystem has less than 500MB free
+  ansible.builtin.fail:
+    msg: >-
+      {{ pkg_cache_path }} filesystem is almost full
+      ({{ pkg_cache_free_kb }} KB free) – cannot run yum/dnf makecache
+  when: (pkg_cache_free_kb | int) < 512000
+🧠 Pourquoi c’est la bonne implémentation
+Pas d’hypothèse sur /var
+Fonctionne même si /var/cache est sur un LV dédié
+Compatible RHEL 7 / 8 / 9
+Zéro faux positif Satellite
+🔁 Rappel (inchangé)
+Tu gardes :
+Copy code
+Yaml
+{{ ansible_pkg_mgr }} clean all
+{{ ansible_pkg_mgr }} makecache
+Si tu veux, je peux aussi te fournir :
+🔹 une version sans set_fact
+🔹 une version avec seuil paramétrable
+🔹 une version block/rescue propre Satellite
+Dis-moi 👍
