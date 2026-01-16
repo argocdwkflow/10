@@ -1,0 +1,82 @@
+Voici le tasks/main.yml complet final (prêt à copier/coller) avec la détection CPE via le domaine (hostname -d ⇔ ansible_facts.domain), et le déploiement du repo uniquement si le fichier est absent ou vide.
+Chemin : roles/satellite_check_bp2itools_repo/tasks/main.yml
+Copy code
+Yaml
+---
+# 1) S'assurer qu'on a au moins les facts minimaux (hostname/domain)
+- name: Ensure minimal facts are available
+  ansible.builtin.setup:
+    gather_subset:
+      - "!all"
+      - "min"
+  when: ansible_facts is not defined or ansible_facts.domain is not defined
+
+# 2) Déterminer si machine CPE (basé sur le domaine = hostname -d)
+- name: Compute hostname/domain and CPE flag
+  ansible.builtin.set_fact:
+    bp2i_hostname: "{{ ansible_facts.hostname | default(inventory_hostname) | lower }}"
+    bp2i_domain: "{{ ansible_facts.domain | default('') | lower }}"
+    bp2i_is_cpe: "{{ (ansible_facts.domain | default('') | lower) == (bp2itools_cpe_suffix | lower) }}"
+
+# 3) Choisir le profil repo (CPE vs standard)
+- name: Select repo profile (CPE vs standard)
+  ansible.builtin.set_fact:
+    bp2itools_repo_name: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.name, bp2itools_standard.name) }}"
+    bp2itools_repo_baseurls: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.baseurls, bp2itools_standard.baseurls) }}"
+
+- name: Debug selection
+  ansible.builtin.debug:
+    msg:
+      - "hostname={{ bp2i_hostname }}"
+      - "domain={{ bp2i_domain }}"
+      - "is_cpe={{ bp2i_is_cpe }}"
+      - "repo_name={{ bp2itools_repo_name }}"
+      - "baseurls={{ bp2itools_repo_baseurls }}"
+  when: bp2itools_debug | bool
+
+# 4) Vérifier existence + contenu du fichier repo
+- name: Check if bp2itools repo file exists
+  ansible.builtin.stat:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_stat
+
+- name: Read repo file content (if exists)
+  ansible.builtin.slurp:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_slurp
+  when: bp2itools_repo_stat.stat.exists
+
+- name: Decide if we must deploy repo (missing or empty)
+  ansible.builtin.set_fact:
+    bp2itools_repo_need_deploy: >-
+      {{
+        (not bp2itools_repo_stat.stat.exists)
+        or
+        (
+          bp2itools_repo_stat.stat.exists
+          and
+          (
+            (bp2itools_repo_stat.stat.size | default(0) | int) == 0
+            or
+            ((bp2itools_repo_slurp.content | default('') | b64decode | trim) == '')
+          )
+        )
+      }}
+
+# 5) Déployer uniquement si absent/vide
+- name: Deploy bp2itools.repo when missing/empty (profile-based)
+  ansible.builtin.template:
+    src: "bp2itools.repo.j2"
+    dest: "{{ bp2itools_repo_path }}"
+    owner: "{{ bp2itools_repo_owner }}"
+    group: "{{ bp2itools_repo_group }}"
+    mode: "{{ bp2itools_repo_mode }}"
+  when: bp2itools_repo_need_deploy
+  notify: Clean yum/dnf metadata
+À vérifier dans defaults/main.yml
+Tu dois avoir :
+Copy code
+Yaml
+bp2itools_cpe_suffix: "cpe.intra"
+(avec ton screenshot : hostname -d renvoie cpe.intra)
+Si tu veux la version fallback (domain OU fqdn) je peux aussi te donner le bloc complet, mais celui-ci est parfaitement aligné avec ta capture.
