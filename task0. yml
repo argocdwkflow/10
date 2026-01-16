@@ -1,0 +1,91 @@
+---
+# roles/satellite_check_bp2itools_repo/tasks/main.yml
+
+# 1) S'assurer qu'on a au moins network facts (fqdn/domain)
+- name: Ensure network facts are available (fqdn/domain)
+  ansible.builtin.setup:
+    gather_subset:
+      - min
+      - network
+
+# 2) Déterminer si machine CPE (basé sur le domain = hostname -d)
+- name: Compute domain/fqdn safely
+  ansible.builtin.set_fact:
+    bp2i_domain: "{{ (ansible_facts.domain | default('')) | lower }}"
+    bp2i_fqdn: "{{ (ansible_facts.fqdn | default(inventory_hostname)) | lower }}"
+
+# Fallback robuste si ansible_facts.domain est vide (rare mais possible)
+- name: Fallback domain via hostname -d (if facts empty)
+  ansible.builtin.command: hostname -d
+  register: _hostname_d
+  changed_when: false
+  when: bp2i_domain | length == 0
+
+- name: Apply domain fallback
+  ansible.builtin.set_fact:
+    bp2i_domain: "{{ _hostname_d.stdout | trim | lower }}"
+  when: bp2i_domain | length == 0
+
+- name: Compute CPE flag (based on domain)
+  ansible.builtin.set_fact:
+    bp2i_is_cpe: "{{ bp2i_domain == (bp2itools_cpe_suffix | lower) }}"
+
+# 3) Choisir le profil repo (CPE vs standard)
+- name: Select repo profile (CPE vs standard)
+  ansible.builtin.set_fact:
+    bp2itools_repo_name: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.name, bp2itools_standard.name) }}"
+    bp2itools_repo_baseurls: "{{ (bp2i_is_cpe | bool) | ternary(bp2itools_cpe.baseurls, bp2itools_standard.baseurls) }}"
+
+- name: Debug selection (fqdn/domain/profile)
+  ansible.builtin.debug:
+    msg:
+      - "inventory_hostname={{ inventory_hostname }}"
+      - "facts.fqdn={{ ansible_facts.fqdn | default('UNDEF') }}"
+      - "facts.domain={{ ansible_facts.domain | default('UNDEF') }}"
+      - "bp2i_fqdn={{ bp2i_fqdn }}"
+      - "bp2i_domain={{ bp2i_domain }}"
+      - "cpe_suffix={{ bp2itools_cpe_suffix }}"
+      - "is_cpe={{ bp2i_is_cpe }}"
+      - "repo_name={{ bp2itools_repo_name }}"
+      - "repo_baseurls={{ bp2itools_repo_baseurls }}"
+  when: bp2itools_debug | bool
+
+# 4) Vérifier existence + contenu du fichier repo
+- name: Check if bp2itools repo file exists
+  ansible.builtin.stat:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_stat
+
+- name: Read repo file content (if exists)
+  ansible.builtin.slurp:
+    path: "{{ bp2itools_repo_path }}"
+  register: bp2itools_repo_slurp
+  when: bp2itools_repo_stat.stat.exists
+
+- name: Decide if we must deploy repo (missing or empty)
+  ansible.builtin.set_fact:
+    bp2itools_repo_need_deploy: >-
+      {{
+        (not bp2itools_repo_stat.stat.exists)
+        or
+        (
+          bp2itools_repo_stat.stat.exists
+          and
+          (
+            (bp2itools_repo_stat.stat.size | default(0) | int) == 0
+            or
+            ((bp2itools_repo_slurp.content | default('') | b64decode | trim) == '')
+          )
+        )
+      }}
+
+# 5) Déployer uniquement si absent/vide (profile-based)
+- name: Deploy bp2itools.repo when missing/empty (profile-based)
+  ansible.builtin.template:
+    src: "bp2itools.repo.j2"
+    dest: "{{ bp2itools_repo_path }}"
+    owner: "{{ bp2itools_repo_owner }}"
+    group: "{{ bp2itools_repo_group }}"
+    mode: "{{ bp2itools_repo_mode }}"
+  when: bp2itools_repo_need_deploy
+  notify: Clean yum/dnf metadata and rebuild cache
